@@ -11,8 +11,8 @@ exports.createGuest = async (req, res) => {
     if (room.status !== "available")
       return res.status(400).json({ message: "Room not available" });
 
-    // 2. Create guest record
-    const guest = await Guest.create({
+    
+    const guest = await Guest.create({ // 2. Create guest record
       fullName,
       address,
       phone,
