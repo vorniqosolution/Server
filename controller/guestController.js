@@ -20,7 +20,6 @@ exports.createGuest = async (req, res) => {
       room: room._id,
       createdBy: req.user.userId
     });
-
     // 3. Mark room occupied
     room.status = "occupied";
     await room.save();
