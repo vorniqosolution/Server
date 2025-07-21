@@ -10,8 +10,10 @@ exports.createGuest = async (req, res) => {
       address,
       phone,
       cnic,
+      email, 
       roomNumber,
       stayDuration,
+      paymentMethod,
       applyDiscount = false
     } = req.body;
 
@@ -48,8 +50,10 @@ exports.createGuest = async (req, res) => {
       address,
       phone,
       cnic,
+      email, 
       room: room._id,
       stayDuration,
+      paymentMethod,
       applyDiscount,
       discountTitle,
       totalRent,
@@ -66,15 +70,17 @@ exports.createGuest = async (req, res) => {
   }
 };
 
-// Get all guests
 exports.getGuests = async (req, res) => {
   try {
     const guests = await Guest.find()
-      .populate("room", "roomNumber type status rate")
+      // pull in roomNumber, bedType, rate and status
+      .populate("room", "roomNumber bedType category rate status view")
       .populate("createdBy", "name email");
-    res.status(200).json({ guests });
+    return res.status(200).json({ guests });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: err.message });
   }
 };
 
@@ -82,7 +88,7 @@ exports.getGuests = async (req, res) => {
 exports.getGuestById = async (req, res) => {
   try {
     const guest = await Guest.findById(req.params.id)
-      .populate("room", "roomNumber type status rate")
+      .populate("room", "roomNumber bedType category rate status view")
       .populate("createdBy", "name email");
     if (!guest) return res.status(404).json({ message: "Guest not found" });
     res.status(200).json({ guest });
@@ -92,25 +98,75 @@ exports.getGuestById = async (req, res) => {
 };
 
 // Check out guest
+// exports.checkoutGuest = async (req, res) => {
+//   try {
+//     const guest = await Guest.findById(req.params.id);
+//     if (!guest) return res.status(404).json({ message: "Guest not found" });
+//     if (guest.status === "checked-out")
+//       return res.status(400).json({ message: "Guest already checked out" });
+
+//     guest.checkOutAt = new Date();
+//     guest.status = "checked-out";
+//     await guest.save();
+
+//     const room = await Room.findById(guest.room);
+//     if (room) {
+//       room.status = "available";
+//       await room.save();
+//     }
+
+//     res.status(200).json({ message: "Guest checked out", guest });
+//   } catch (err) {
+//     res.status(500).json({ message: "Server error", error: err.message });
+//   }
+// };
+
 exports.checkoutGuest = async (req, res) => {
   try {
     const guest = await Guest.findById(req.params.id);
-    if (!guest) return res.status(404).json({ message: "Guest not found" });
+    if (!guest) 
+      return res.status(404).json({ message: "Guest not found" });
+
     if (guest.status === "checked-out")
       return res.status(400).json({ message: "Guest already checked out" });
 
-    guest.checkOutAt = new Date();
-    guest.status = "checked-out";
+    // mark checkout timestamp
+    const now = new Date();
+    guest.checkOutAt   = now;
+    guest.checkOutDate = now.toISOString().split("T")[0];    // "YYYY-MM-DD"
+    guest.checkOutTime = now.toTimeString().slice(0,5);       // "HH:MM"
+    guest.status       = "checked-out";
+
+    // recalc duration in days
+    const inMs  = guest.checkInAt.getTime();
+    const outMs = now.getTime();
+    guest.stayDuration = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24));
+
     await guest.save();
 
+    // free up the room
     const room = await Room.findById(guest.room);
     if (room) {
       room.status = "available";
       await room.save();
     }
 
-    res.status(200).json({ message: "Guest checked out", guest });
+    return res.status(200).json({ message: "Guest checked out", guest });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("checkoutGuest Error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+exports.deleteGuest = async (req, res) => {
+  try {
+    const guest = await Guest.findByIdAndDelete(req.params.id);
+    if (!guest) {
+      return res.status(404).json({ message: "Guest not found" });
+    }
+    return res.json({ message: "Guest deleted successfully" });
+  } catch (err) {
+    console.error("deleteGuest Error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
