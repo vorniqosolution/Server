@@ -34,6 +34,12 @@ const guestSchema = new mongoose.Schema(
       enum: ["checked-in", "checked-out"],
       default: "checked-in",
     },
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "card", "online"],
+      default: "cash",
+      required: true,
+    },
     stayDuration: { type: Number, required: true }, // in days
     applyDiscount: { type: Boolean, default: false },
     discountTitle: { type: String }, // Optional for reference
@@ -44,6 +50,7 @@ const guestSchema = new mongoose.Schema(
       required: true,
     },
   },
+  
   { timestamps: true }
 );
 

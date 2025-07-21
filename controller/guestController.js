@@ -13,6 +13,7 @@ exports.createGuest = async (req, res) => {
       email, 
       roomNumber,
       stayDuration,
+      paymentMethod,
       applyDiscount = false
     } = req.body;
 
@@ -52,6 +53,7 @@ exports.createGuest = async (req, res) => {
       email, 
       room: room._id,
       stayDuration,
+      paymentMethod,
       applyDiscount,
       discountTitle,
       totalRent,
