@@ -15,4 +15,6 @@ router.get("/get-Guest-By-Id/:id", guestController.getGuestById);
 // Check-out a guest
 router.patch("/check-out-Guest/:id/checkout", guestController.checkoutGuest);
 
+router.delete("/guests/:id", guestController.deleteGuest);
+
 module.exports = router;
