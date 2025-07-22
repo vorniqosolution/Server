@@ -7,13 +7,11 @@ const authRoutes = require("./routes/authRoutes");
 const roomRoutes = require("./routes/roomRoutes");
 const guestRoutes = require("./routes/guestRoutes");
 const discountRoutes = require("./routes/discountRoutes");
+const inventoryRoutes = require("./routes/inventoryRoutes");
 
 dotenv.config();
 const app = express();
 
-// app.use(
-//   cors({ origin: "http://localhost:8080", credentials: true })
-// );
 const allowed = ['http://localhost:3000', 'http://localhost:8080'];
 app.use(cors({
   origin: (origin, cb) => {
@@ -31,6 +29,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/guests", guestRoutes);
 app.use("/api/discounts", discountRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
