@@ -8,6 +8,7 @@ const inventoryItemSchema = new mongoose.Schema(
     quantityOnHand: { type: Number, required: true, default: 0 },
     reorderLevel: { type: Number, required: true, default: 0 },
     location: { type: String, trim: true },
+    defaultCheckInQty: { type: Number, required: true, default: 0, min: 0 },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }
   },
   { timestamps: true }

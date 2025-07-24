@@ -20,7 +20,7 @@ router.delete("/delete-item/:id", auth, invCtrl.deleteItem);
 router.post("/create-transaction", auth, invCtrl.createTransaction);
 
 // Integrations
-router.post("/handle-room-checkin", auth, invCtrl.handleRoomCheckin);
-router.post("/handle-room-checkout", auth, invCtrl.handleRoomCheckout);
+router.post("/checkin", auth, invCtrl.handleRoomCheckin);
+router.post("/checkout", auth, invCtrl.handleRoomCheckout);
 
 module.exports = router;

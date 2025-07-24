@@ -3,441 +3,496 @@ const InventoryItem = require("../model/inventoryItem");
 const InventoryTransaction = require("../model/inventoryTransaction");
 const Room = require("../model/room");
 const Guest = require("../model/guest");
+const mongoose = require("mongoose");
 
-// --- Category CRUD ---
 exports.createCategory = async (req, res) => {
-    try {
-        // 1. Authentication check
-        if (!req.user || !req.user.userId) {
-            return res.status(401).json({ 
-                message: "Authentication required. Please login first." 
-            });
-        }
-
-        // 2. Request body validation
-        if (!req.body || Object.keys(req.body).length === 0) {
-            return res.status(400).json({ 
-                message: "Request body cannot be empty." 
-            });
-        }
-
-        // 3. Required field validation
-        if (!req.body.name || req.body.name.trim() === '') {
-            return res.status(400).json({ 
-                message: "Category name is required and cannot be empty." 
-            });
-        }
-
-        // 4. Name length validation
-        if (req.body.name.length > 100) {
-            return res.status(400).json({ 
-                message: "Category name cannot exceed 100 characters." 
-            });
-        }
-
-        // 5. Description length validation (if provided)
-        if (req.body.description && req.body.description.length > 500) {
-            return res.status(400).json({ 
-                message: "Description cannot exceed 500 characters." 
-            });
-        }
-
-        // 6. Check for invalid fields
-        const allowedFields = ['name', 'description'];
-        const invalidFields = Object.keys(req.body).filter(field => !allowedFields.includes(field));
-        if (invalidFields.length > 0) {
-            return res.status(400).json({ 
-                message: `Invalid fields: ${invalidFields.join(', ')}. Allowed fields: ${allowedFields.join(', ')}` 
-            });
-        }
-
-        // 7. Create category
-        const cat = await InventoryCategory.create({
-            ...req.body,
-            createdBy: req.user.userId
-        });
-
-        res.status(201).json({
-            success: true,
-            message: "Category created successfully",
-            data: cat
-        });
-
-    } catch (err) {
-        console.error('Create category error:', err);
-
-        // 8. Handle specific MongoDB errors
-        if (err.name === 'ValidationError') {
-            const validationErrors = Object.values(err.errors).map(e => e.message);
-            return res.status(400).json({ 
-                message: "Validation failed", 
-                errors: validationErrors 
-            });
-        }
-
-        // 9. Handle duplicate key error (unique constraint)
-        if (err.code === 11000) {
-            const duplicateField = Object.keys(err.keyPattern)[0];
-            return res.status(409).json({ 
-                message: `A category with this ${duplicateField} already exists.` 
-            });
-        }
-
-        // 10. Handle cast errors (invalid ObjectId)
-        if (err.name === 'CastError') {
-            return res.status(400).json({ 
-                message: "Invalid data format provided." 
-            });
-        }
-
-        // 11. Handle database connection errors
-        if (err.name === 'MongoNetworkError') {
-            return res.status(503).json({ 
-                message: "Database connection error. Please try again later." 
-            });
-        }
-
-        // 12. Handle timeout errors
-        if (err.name === 'MongoTimeoutError') {
-            return res.status(504).json({ 
-                message: "Request timeout. Please try again." 
-            });
-        }
-
-        // 13. Generic server error
-        res.status(500).json({ 
-            message: "Internal server error. Please try again later.",
-            ...(process.env.NODE_ENV === 'development' && { error: err.message })
-        });
+  const { name, description } = req.body;
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({
+      success: false,
+      message: "Category name is required and must be a non-empty string.",
+    });
+  }
+  if (description && typeof description !== "string") {
+    return res
+      .status(400)
+      .json({ success: false, message: "Description must be a string." });
+  }
+  try {
+    const cat = await InventoryCategory.create({
+      name: name.trim(),
+      description: description?.trim(),
+      createdBy: req.user.userId,
+    });
+    res.status(201).json({
+      success: true,
+      message: "Category created successfully.",
+      data: cat,
+    });
+  } catch (err) {
+    if (err.name === "ValidationError") {
+      return res.status(400).json({ success: false, message: err.message });
     }
+    if (err.code === 11000) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Category name must be unique." });
+    }
+    res
+      .status(500)
+      .json({ success: false, message: "Server error creating category." });
+  }
 };
 
 exports.getCategories = async (req, res) => {
-    try {
-        // 1. Authentication check
-        if (!req.user || !req.user.userId) {
-            return res.status(401).json({ 
-                message: "Authentication required. Please login first." 
-            });
-        }
-
-        // 2. Query parameters validation
-        const { page = 1, limit = 10, search } = req.query;
-        
-        if (page < 1 || limit < 1) {
-            return res.status(400).json({ 
-                message: "Page and limit must be positive numbers." 
-            });
-        }
-
-        if (limit > 100) {
-            return res.status(400).json({ 
-                message: "Limit cannot exceed 100 items per page." 
-            });
-        }
-
-        // 3. Build query
-        let query = {};
-        if (search) {
-            query.name = { $regex: search, $options: 'i' };
-        }
-
-        // 4. Execute query with pagination
-        const cats = await InventoryCategory.find(query)
-            .sort("name")
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
-            .populate('createdBy', 'name email');
-
-        const total = await InventoryCategory.countDocuments(query);
-
-        res.status(200).json({
-            success: true,
-            data: cats,
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total,
-                pages: Math.ceil(total / limit)
-            }
-        });
-
-    } catch (err) {
-        console.error('Get categories error:', err);
-
-        // Handle specific errors
-        if (err.name === 'MongoNetworkError') {
-            return res.status(503).json({ 
-                message: "Database connection error. Please try again later." 
-            });
-        }
-
-        if (err.name === 'MongoTimeoutError') {
-            return res.status(504).json({ 
-                message: "Request timeout. Please try again." 
-            });
-        }
-
-        res.status(500).json({ 
-            message: "Internal server error. Please try again later.",
-            ...(process.env.NODE_ENV === 'development' && { error: err.message })
-        });
-    }
+  try {
+    const cats = await InventoryCategory.find().sort("name");
+    res.status(200).json({
+      success: true,
+      message: "Categories fetched successfully.",
+      data: cats,
+    });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error fetching categories." });
+  }
 };
 
 exports.updateCategory = async (req, res) => {
-    try {
-        // 1. Authentication check
-        if (!req.user || !req.user.userId) {
-            return res.status(401).json({ 
-                message: "Authentication required. Please login first." 
-            });
-        }
-
-        // 2. ID validation
-        if (!req.params.id) {
-            return res.status(400).json({ 
-                message: "Category ID is required." 
-            });
-        }
-
-        if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
-            return res.status(400).json({ 
-                message: "Invalid category ID format." 
-            });
-        }
-
-        // 3. Request body validation
-        if (!req.body || Object.keys(req.body).length === 0) {
-            return res.status(400).json({ 
-                message: "Request body cannot be empty." 
-            });
-        }
-
-        // 4. Field validation
-        const allowedFields = ['name', 'description'];
-        const updateFields = Object.keys(req.body);
-        const invalidFields = updateFields.filter(field => !allowedFields.includes(field));
-        
-        if (invalidFields.length > 0) {
-            return res.status(400).json({ 
-                message: `Invalid fields: ${invalidFields.join(', ')}. Allowed fields: ${allowedFields.join(', ')}` 
-            });
-        }
-
-        // 5. Name validation (if provided)
-        if (req.body.name !== undefined) {
-            if (!req.body.name || req.body.name.trim() === '') {
-                return res.status(400).json({ 
-                    message: "Category name cannot be empty." 
-                });
-            }
-            if (req.body.name.length > 100) {
-                return res.status(400).json({ 
-                    message: "Category name cannot exceed 100 characters." 
-                });
-            }
-        }
-
-        // 6. Description validation (if provided)
-        if (req.body.description && req.body.description.length > 500) {
-            return res.status(400).json({ 
-                message: "Description cannot exceed 500 characters." 
-            });
-        }
-
-        // 7. Check if category exists
-        const existingCategory = await InventoryCategory.findById(req.params.id);
-        if (!existingCategory) {
-            return res.status(404).json({ 
-                message: "Category not found." 
-            });
-        }
-
-        // 8. Permission check (optional - only creator can update)
-        if (existingCategory.createdBy.toString() !== req.user.userId) {
-            return res.status(403).json({ 
-                message: "You don't have permission to update this category." 
-            });
-        }
-
-        // 9. Update category
-        const cat = await InventoryCategory.findByIdAndUpdate(
-            req.params.id, 
-            { ...req.body }, 
-            { new: true, runValidators: true }
-        ).populate('createdBy', 'name email');
-
-        res.status(200).json({
-            success: true,
-            message: "Category updated successfully",
-            data: cat
-        });
-
-    } catch (err) {
-        console.error('Update category error:', err);
-
-        // Handle specific errors
-        if (err.name === 'ValidationError') {
-            const validationErrors = Object.values(err.errors).map(e => e.message);
-            return res.status(400).json({ 
-                message: "Validation failed", 
-                errors: validationErrors 
-            });
-        }
-
-        if (err.code === 11000) {
-            const duplicateField = Object.keys(err.keyPattern)[0];
-            return res.status(409).json({ 
-                message: `A category with this ${duplicateField} already exists.` 
-            });
-        }
-
-        if (err.name === 'CastError') {
-            return res.status(400).json({ 
-                message: "Invalid category ID format." 
-            });
-        }
-
-        if (err.name === 'MongoNetworkError') {
-            return res.status(503).json({ 
-                message: "Database connection error. Please try again later." 
-            });
-        }
-
-        res.status(500).json({ 
-            message: "Internal server error. Please try again later.",
-            ...(process.env.NODE_ENV === 'development' && { error: err.message })
-        });
+  const { id } = req.params;
+  const { name, description } = req.body;
+  if (name && typeof name !== "string") {
+    return res
+      .status(400)
+      .json({ success: false, message: "Name must be a string." });
+  }
+  try {
+    const cat = await InventoryCategory.findByIdAndUpdate(
+      id,
+      {
+        ...(name && { name: name.trim() }),
+        ...(description && { description: description.trim() }),
+      },
+      { new: true, runValidators: true }
+    );
+    if (!cat)
+      return res
+        .status(404)
+        .json({ success: false, message: "Category not found." });
+    res.status(200).json({
+      success: true,
+      message: "Category updated successfully.",
+      data: cat,
+    });
+  } catch (err) {
+    if (err.name === "CastError") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid category ID." });
     }
+    if (err.code === 11000) {
+      return res
+        .status(409)
+        .json({ success: false, message: "Category name must be unique." });
+    }
+    res
+      .status(500)
+      .json({ success: false, message: "Server error updating category." });
+  }
 };
 
 exports.deleteCategory = async (req, res) => {
-    try {
-        console.log('Delete request received for ID:', req.params.id);
-        console.log('User:', req.user);
-
-        // Simple validation
-        if (!req.params.id) {
-            console.log('No ID provided');
-            return res.status(400).json({ 
-                message: "Category ID is required." 
-            });
-        }
-
-        // Try to find and delete
-        console.log('Attempting to delete category...');
-        const deletedCategory = await InventoryCategory.findByIdAndDelete(req.params.id);
-        console.log('Delete result:', deletedCategory);
-        
-        if (!deletedCategory) {
-            console.log('Category not found');
-            return res.status(404).json({ 
-                message: "Category not found." 
-            });
-        }
-
-        console.log('Category deleted successfully');
-        res.status(200).json({
-            success: true,
-            message: "Category deleted successfully"
-        });
-
-    } catch (err) {
-        console.error('Delete category error details:', {
-            name: err.name,
-            message: err.message,
-            stack: err.stack
-        });
-        
-        res.status(500).json({ 
-            message: "Error deleting category",
-            error: err.message,
-            errorName: err.name
-        });
+  const { id } = req.params;
+  try {
+    const cat = await InventoryCategory.findByIdAndDelete(id);
+    if (!cat)
+      return res
+        .status(404)
+        .json({ success: false, message: "Category not found." });
+    res
+      .status(200)
+      .json({ success: true, message: "Category deleted successfully." });
+  } catch (err) {
+    if (err.name === "CastError") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid category ID." });
     }
+    res
+      .status(500)
+      .json({ success: false, message: "Server error deleting category." });
+  }
 };
 
 // --- Item CRUD ---
+// exports.createItem = async (req, res) => {
+//   const { name, category, unitPrice, quantityOnHand, reorderLevel, location } =
+//     req.body;
+//   if (!name || typeof name !== "string")
+//     return res
+//       .status(400)
+//       .json({ success: false, message: "Item name is required." });
+//   if (!mongoose.Types.ObjectId.isValid(category))
+//     return res
+//       .status(400)
+//       .json({ success: false, message: "Invalid category ID." });
+//   if (typeof unitPrice !== "number" || unitPrice < 0)
+//     return res
+//       .status(400)
+//       .json({
+//         success: false,
+//         message: "Unit price must be a non-negative number.",
+//       });
+//   if (typeof quantityOnHand !== "number" || quantityOnHand < 0)
+//     return res
+//       .status(400)
+//       .json({
+//         success: false,
+//         message: "Quantity on hand must be a non-negative number.",
+//       });
+//   if (typeof reorderLevel !== "number" || reorderLevel < 0)
+//     return res
+//       .status(400)
+//       .json({
+//         success: false,
+//         message: "Reorder level must be a non-negative number.",
+//       });
+//   try {
+//     // Check if item with same name already exists
+//     const existingItem = await InventoryItem.findOne({ name: name.trim() });
+//     if (existingItem) {
+//       return res
+//         .status(409)
+//         .json({ success: false, message: "An item with this name already exists." });
+//     }
+
+//     const item = await InventoryItem.create({
+//       name: name.trim(),
+//       category,
+//       unitPrice,
+//       quantityOnHand,
+//       reorderLevel,
+//       location: location?.trim(),
+//       createdBy: req.user.userId,
+//     });
+//     res
+//       .status(201)
+//       .json({
+//         success: true,
+//         message: "Item created successfully.",
+//         data: item,
+//       });
+//   } catch (err) {
+//     if (err.name === "ValidationError")
+//       return res.status(400).json({ success: false, message: err.message });
+//     if (err.name === "CastError")
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid ID format." });
+//     res
+//       .status(500)
+//       .json({ success: false, message: "Server error creating item." });
+//   }
+// };
 exports.createItem = async (req, res) => {
-    try {
-        const item = await InventoryItem.create({ ...req.body, createdBy: req.user.id });
-        res.status(201).json(item);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
+  const {
+    name,
+    category,
+    unitPrice,
+    quantityOnHand,
+    reorderLevel,
+    location,
+    defaultCheckInQty,
+  } = req.body;
+  // input validation
+  if (!name || typeof name !== "string")
+    return res
+      .status(400)
+      .json({ success: false, message: "Item name is required." });
+  if (!mongoose.Types.ObjectId.isValid(category))
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid category ID." });
+  if (typeof unitPrice !== "number" || unitPrice < 0)
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "Unit price must be a non-negative number.",
+      });
+  if (typeof quantityOnHand !== "number" || quantityOnHand < 0)
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "Quantity on hand must be a non-negative number.",
+      });
+  if (typeof reorderLevel !== "number" || reorderLevel < 0)
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "Reorder level must be a non-negative number.",
+      });
+  if (
+    defaultCheckInQty != null &&
+    (typeof defaultCheckInQty !== "number" || defaultCheckInQty < 0)
+  ) {
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "defaultCheckInQty must be a non-negative number.",
+      });
+  }
+  try {
+    const item = await InventoryItem.create({
+      name: name.trim(),
+      category,
+      unitPrice,
+      quantityOnHand,
+      reorderLevel,
+      location: location?.trim(),
+      defaultCheckInQty: defaultCheckInQty || 0,
+      createdBy: req.user.userId,
+    });
+    res
+      .status(201)
+      .json({
+        success: true,
+        message: "Item created successfully.",
+        data: item,
+      });
+  } catch (err) {
+    if (err.name === "ValidationError")
+      return res.status(400).json({ success: false, message: err.message });
+    if (err.name === "CastError")
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid ID format." });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error creating item." });
+  }
 };
 
 exports.getItems = async (req, res) => {
+  try {
     const items = await InventoryItem.find().populate("category");
-    res.json(items);
+    res.status(200).json({
+      success: true,
+      message: "Items fetched successfully.",
+      data: items,
+    });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error fetching items." });
+  }
 };
 
+// exports.updateItem = async (req, res) => {
+//   const { id } = req.params;
+//   const { name, category, unitPrice, reorderLevel, location } = req.body;
+//   try {
+//     const updates = {};
+//     if (name) updates.name = name.trim();
+//     if (category) updates.category = category;
+//     if (unitPrice != null) updates.unitPrice = unitPrice;
+//     if (reorderLevel != null) updates.reorderLevel = reorderLevel;
+//     if (location) updates.location = location.trim();
+//     const item = await InventoryItem.findByIdAndUpdate(id, updates, {
+//       new: true,
+//       runValidators: true,
+//     });
+//     if (!item)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Item not found." });
+//     res.status(200).json({
+//       success: true,
+//       message: "Item updated successfully.",
+//       data: item,
+//     });
+//   } catch (err) {
+//     if (err.name === "ValidationError")
+//       return res.status(400).json({ success: false, message: err.message });
+//     if (err.name === "CastError")
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid ID format." });
+//     res
+//       .status(500)
+//       .json({ success: false, message: "Server error updating item." });
+//   }
+// };
+
 exports.updateItem = async (req, res) => {
-    try {
-        const item = await InventoryItem.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        res.json(item);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
+  const { id } = req.params;
+  const { name, category, unitPrice, reorderLevel, location, defaultCheckInQty } = req.body;
+  try {
+    const updates = {};
+    if (name) updates.name = name.trim();
+    if (category) updates.category = category;
+    if (unitPrice != null) updates.unitPrice = unitPrice;
+    if (reorderLevel != null) updates.reorderLevel = reorderLevel;
+    if (location) updates.location = location.trim();
+    if (defaultCheckInQty != null) updates.defaultCheckInQty = defaultCheckInQty;
+    const item = await InventoryItem.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+    if (!item) return res.status(404).json({ success: false, message: "Item not found." });
+    res.status(200).json({ success: true, message: "Item updated successfully.", data: item });
+  } catch (err) {
+    if (err.name === "ValidationError") return res.status(400).json({ success: false, message: err.message });
+    if (err.name === "CastError") return res.status(400).json({ success: false, message: "Invalid ID format." });
+    res.status(500).json({ success: false, message: "Server error updating item." });
+  }
 };
 
 exports.deleteItem = async (req, res) => {
-    try {
-        await InventoryItem.findByIdAndDelete(req.params.id);
-        res.status(204).end();
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
+  const { id } = req.params;
+  try {
+    const item = await InventoryItem.findByIdAndDelete(id);
+    if (!item)
+      return res
+        .status(404)
+        .json({ success: false, message: "Item not found." });
+    res
+      .status(200)
+      .json({ success: true, message: "Item deleted successfully." });
+  } catch (err) {
+    if (err.name === "CastError")
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid ID format." });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error deleting item." });
+  }
 };
 
 // --- Transactions ---
 exports.createTransaction = async (req, res) => {
-    try {
-        const tx = await InventoryTransaction.create({ ...req.body, createdBy: req.user.id });
-        // update item quantityOnHand
-        await InventoryItem.findByIdAndUpdate(tx.item, {
-            $inc: { quantityOnHand: tx.transactionType === "issue" || tx.transactionType === "usage" ? -tx.quantity : tx.quantity }
-        });
-        res.status(201).json(tx);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
+  try {
+    // Validate required fields
+    const { item, transactionType, quantity } = req.body;
+
+    if (!item || !transactionType || !quantity) {
+      return res.status(400).json({
+        success: false,
+        message: "Item, transaction type, and quantity are required",
+      });
     }
+
+    if (typeof quantity !== "number" || quantity <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Quantity must be a positive number",
+      });
+    }
+
+    // Check if item exists and has enough inventory for issue/usage
+    const inventoryItem = await InventoryItem.findById(item);
+    if (!inventoryItem) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found",
+      });
+    }
+
+    if (
+      (transactionType === "issue" || transactionType === "usage") &&
+      inventoryItem.quantityOnHand < quantity
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient inventory",
+      });
+    }
+
+    // Create transaction without using sessions for now
+    const tx = await InventoryTransaction.create({
+      ...req.body,
+      createdBy: req.user.userId,
+    });
+
+    // Update item quantity
+    const quantityChange =
+      transactionType === "issue" || transactionType === "usage"
+        ? -quantity
+        : quantity;
+
+    await InventoryItem.findByIdAndUpdate(item, {
+      $inc: { quantityOnHand: quantityChange },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Transaction created successfully",
+      data: tx,
+    });
+  } catch (err) {
+    console.error("Transaction error:", err); // Add detailed logging
+
+    if (err.name === "ValidationError") {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+
+    if (err.name === "CastError") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid ID format" });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: `Error creating transaction: ${err.message}`, // Include error message
+    });
+  }
 };
 
 // --- Integrations: Room Check-in / Check-out ---
 exports.handleRoomCheckin = async (req, res) => {
-    // req.body: { roomId, guestId, defaultItems: [{ itemId, qty }] }
-    const { roomId, guestId, defaultItems } = req.body;
-    try {
-        const txs = [];
-        for (let { itemId, qty } of defaultItems) {
-            const tx = await InventoryTransaction.create({
-                item: itemId,
-                room: roomId,
-                guest: guestId,
-                transactionType: "issue",
-                quantity: qty,
-                createdBy: req.user.id
-            });
-            await InventoryItem.findByIdAndUpdate(itemId, { $inc: { quantityOnHand: -qty } });
-            txs.push(tx);
-        }
-        res.status(200).json(txs);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
+  const { roomId, guestId } = req.body;
+  // Validate IDs
+  if (!mongoose.Types.ObjectId.isValid(roomId) || !mongoose.Types.ObjectId.isValid(guestId)) {
+    return res.status(400).json({ success: false, message: "Invalid room or guest ID." });
+  }
+  try {
+    // Dynamically fetch items to auto-issue based on backend setting
+    const defaultItems = await InventoryItem.find({ defaultCheckInQty: { $gt: 0 } });
+    if (!defaultItems.length) {
+      return res.status(200).json({ success: true, message: "No default items configured for check-in.", data: [] });
     }
+    const txs = await Promise.all(defaultItems.map(async item => {
+      const qty = item.defaultCheckInQty;
+      const tx = await InventoryTransaction.create({
+        item:      item._id,
+        room:      roomId,
+        guest:     guestId,
+        transactionType: "issue",
+        quantity:  qty,
+        createdBy: req.user.userId
+      });
+      // update stock
+      await InventoryItem.findByIdAndUpdate(item._id, { $inc: { quantityOnHand: -qty } });
+      return tx;
+    }));
+    res.status(200).json({ success: true, message: "Default items issued on check-in.", data: txs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error on check-in integration." });
+  }
 };
 
 exports.handleRoomCheckout = async (req, res) => {
-    // req.body: { roomId, guestId }
-    const { roomId, guestId } = req.body;
-    try {
-        // fetch issued vs current stock logic here (example stub)
-        // compute usedQty by comparing initial allocation and remaining qty
-        // for each used item, create 'usage' tx and post to Guest
-        res.status(200).json({ message: "Checkout integration executed" });
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
+  // req.body: { roomId, guestId }
+  const { roomId, guestId } = req.body;
+  try {
+    // fetch issued vs current stock logic here (example stub)
+    // compute usedQty by comparing initial allocation and remaining qty
+    // for each used item, create 'usage' tx and post to Guest
+    res.status(200).json({ message: "Checkout integration executed" });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
 };
