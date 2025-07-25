@@ -8,18 +8,21 @@ const roomRoutes = require("./routes/roomRoutes");
 const guestRoutes = require("./routes/guestRoutes");
 const discountRoutes = require("./routes/discountRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
+const revenueRoutes = require("./routes/revenueRoutes");
 
 dotenv.config();
 const app = express();
 
-const allowed = ['http://localhost:3000', 'http://localhost:8080'];
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || allowed.includes(origin)) return cb(null, true);
-    cb(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-}));
+const allowed = ["http://localhost:3000", "http://localhost:8080"];
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin || allowed.includes(origin)) return cb(null, true);
+      cb(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 app.use(cookieParser());
 app.use(express.json());
 
@@ -30,6 +33,7 @@ app.use("/api/rooms", roomRoutes);
 app.use("/api/guests", guestRoutes);
 app.use("/api/discounts", discountRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/revenue", revenueRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
