@@ -129,43 +129,6 @@ exports.getGuestById = async (req, res) => {
   }
 };
 
-// exports.checkoutGuest = async (req, res) => {
-//   try {
-//     const guest = await Guest.findById(req.params.id);
-//     if (!guest)
-//       return res.status(404).json({ message: "Guest not found" });
-
-//     if (guest.status === "checked-out")
-//       return res.status(400).json({ message: "Guest already checked out" });
-
-//     // mark checkout timestamp
-//     const now = new Date();
-//     guest.checkOutAt   = now;
-//     guest.checkOutDate = now.toISOString().split("T")[0];    // "YYYY-MM-DD"
-//     guest.checkOutTime = now.toTimeString().slice(0,5);       // "HH:MM"
-//     guest.status       = "checked-out";
-
-//     // recalc duration in days
-//     const inMs  = guest.checkInAt.getTime();
-//     const outMs = now.getTime();
-//     guest.stayDuration = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24));
-
-//     await guest.save();
-
-//     // free up the room
-//     const room = await Room.findById(guest.room);
-//     if (room) {
-//       room.status = "available";
-//       await room.save();
-//     }
-
-//     return res.status(200).json({ message: "Guest checked out", guest });
-//   } catch (err) {
-//     console.error("checkoutGuest Error:", err);
-//     return res.status(500).json({ message: "Server error", error: err.message });
-//   }
-// };
-
 exports.checkoutGuest = async (req, res) => {
   try {
     const { id } = req.params;
@@ -248,5 +211,53 @@ exports.deleteGuest = async (req, res) => {
     return res
       .status(500)
       .json({ message: "Server error", error: err.message });
+  }
+};
+
+exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
+  try {
+    const { category } = req.query;
+
+    if (!category) {
+      return res.status(400).json({
+        success: false,
+        error: "Please provide a room category",
+      });
+    }
+
+    // First, find all rooms of the specified category
+    const roomsInCategory = await Room.find({ category: category }).select('_id');
+    const roomIds = roomsInCategory.map(room => room._id);
+
+    if (roomIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
+        message: `No rooms found for category: ${category}`
+      });
+    }
+
+    // Now find all guests who are:
+    // 1. Currently checked-in (status: "checked-in")
+    // 2. In one of the rooms from our category
+    const checkedInGuests = await Guest.find({
+      status: "checked-in",
+      room: { $in: roomIds }
+    })
+    .populate('room', 'roomNumber bedType view rate') // Include room details
+    .populate('createdBy', 'name email') // Include admin who created the booking
+    .sort({ checkInAt: -1 }); // Most recent check-ins first
+
+    res.status(200).json({
+      success: true,
+      category: category,
+      count: checkedInGuests.length,
+      data: checkedInGuests,
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, error: "Server Error" });
   }
 };

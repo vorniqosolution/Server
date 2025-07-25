@@ -6,15 +6,18 @@ const guestController = require("../controller/guestController");
 // Protect all guest routes
 router.use(authenticate);
 
-// Check-in a new guest
+
 router.post("/create-guest", guestController.createGuest);
-// List all guests
+
 router.get("/get-all-guest", guestController.getGuests);
-// View a single guest
+
+router.get("/get-guest-by-category", guestController.getCheckedInGuestsByRoomCategory);
+
 router.get("/get-Guest-By-Id/:id", guestController.getGuestById);
-// Check-out a guest
+
 router.patch("/check-out-Guest/:id/checkout", guestController.checkoutGuest);
 
 router.delete("/guests/:id", guestController.deleteGuest);
+
 
 module.exports = router;
