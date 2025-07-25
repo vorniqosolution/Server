@@ -18,6 +18,7 @@ router.delete("/delete-item/:id", auth, invCtrl.deleteItem);
 
 // Transactions
 router.post("/create-transaction", auth, invCtrl.createTransaction);
+router.get("/get-transactions", auth, invCtrl.getTransactions);
 
 // Integrations
 router.post("/checkin", auth, invCtrl.handleRoomCheckin);
