@@ -126,75 +126,6 @@ exports.deleteCategory = async (req, res) => {
 };
 
 // --- Item CRUD ---
-// exports.createItem = async (req, res) => {
-//   const { name, category, unitPrice, quantityOnHand, reorderLevel, location } =
-//     req.body;
-//   if (!name || typeof name !== "string")
-//     return res
-//       .status(400)
-//       .json({ success: false, message: "Item name is required." });
-//   if (!mongoose.Types.ObjectId.isValid(category))
-//     return res
-//       .status(400)
-//       .json({ success: false, message: "Invalid category ID." });
-//   if (typeof unitPrice !== "number" || unitPrice < 0)
-//     return res
-//       .status(400)
-//       .json({
-//         success: false,
-//         message: "Unit price must be a non-negative number.",
-//       });
-//   if (typeof quantityOnHand !== "number" || quantityOnHand < 0)
-//     return res
-//       .status(400)
-//       .json({
-//         success: false,
-//         message: "Quantity on hand must be a non-negative number.",
-//       });
-//   if (typeof reorderLevel !== "number" || reorderLevel < 0)
-//     return res
-//       .status(400)
-//       .json({
-//         success: false,
-//         message: "Reorder level must be a non-negative number.",
-//       });
-//   try {
-//     // Check if item with same name already exists
-//     const existingItem = await InventoryItem.findOne({ name: name.trim() });
-//     if (existingItem) {
-//       return res
-//         .status(409)
-//         .json({ success: false, message: "An item with this name already exists." });
-//     }
-
-//     const item = await InventoryItem.create({
-//       name: name.trim(),
-//       category,
-//       unitPrice,
-//       quantityOnHand,
-//       reorderLevel,
-//       location: location?.trim(),
-//       createdBy: req.user.userId,
-//     });
-//     res
-//       .status(201)
-//       .json({
-//         success: true,
-//         message: "Item created successfully.",
-//         data: item,
-//       });
-//   } catch (err) {
-//     if (err.name === "ValidationError")
-//       return res.status(400).json({ success: false, message: err.message });
-//     if (err.name === "CastError")
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Invalid ID format." });
-//     res
-//       .status(500)
-//       .json({ success: false, message: "Server error creating item." });
-//   }
-// };
 exports.createItem = async (req, res) => {
   const {
     name,
@@ -291,42 +222,6 @@ exports.getItems = async (req, res) => {
       .json({ success: false, message: "Server error fetching items." });
   }
 };
-
-// exports.updateItem = async (req, res) => {
-//   const { id } = req.params;
-//   const { name, category, unitPrice, reorderLevel, location } = req.body;
-//   try {
-//     const updates = {};
-//     if (name) updates.name = name.trim();
-//     if (category) updates.category = category;
-//     if (unitPrice != null) updates.unitPrice = unitPrice;
-//     if (reorderLevel != null) updates.reorderLevel = reorderLevel;
-//     if (location) updates.location = location.trim();
-//     const item = await InventoryItem.findByIdAndUpdate(id, updates, {
-//       new: true,
-//       runValidators: true,
-//     });
-//     if (!item)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Item not found." });
-//     res.status(200).json({
-//       success: true,
-//       message: "Item updated successfully.",
-//       data: item,
-//     });
-//   } catch (err) {
-//     if (err.name === "ValidationError")
-//       return res.status(400).json({ success: false, message: err.message });
-//     if (err.name === "CastError")
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Invalid ID format." });
-//     res
-//       .status(500)
-//       .json({ success: false, message: "Server error updating item." });
-//   }
-// };
 
 exports.updateItem = async (req, res) => {
   const { id } = req.params;
@@ -451,6 +346,28 @@ exports.createTransaction = async (req, res) => {
   }
 };
 
+exports.getTransactions = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.room)  filter.room  = req.query.room;
+    if (req.query.guest) filter.guest = req.query.guest;
+
+    const txs = await InventoryTransaction
+      .find(filter)
+      .populate('item')
+      .populate('room')
+      .populate('guest');
+
+    return res.status(200).json({ success: true, data: txs });
+  } catch (err) {
+    console.error('getTransactions Error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error fetching transactions.'
+    });
+  }
+};
+
 // --- Integrations: Room Check-in / Check-out ---
 exports.handleRoomCheckin = async (req, res) => {
   const { roomId, guestId } = req.body;
@@ -485,14 +402,69 @@ exports.handleRoomCheckin = async (req, res) => {
 };
 
 exports.handleRoomCheckout = async (req, res) => {
-  // req.body: { roomId, guestId }
   const { roomId, guestId } = req.body;
+  // 1. Validate incoming IDs
+  if (!mongoose.Types.ObjectId.isValid(roomId) ||
+      !mongoose.Types.ObjectId.isValid(guestId)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid room or guest ID.'
+    });
+  }
+
   try {
-    // fetch issued vs current stock logic here (example stub)
-    // compute usedQty by comparing initial allocation and remaining qty
-    // for each used item, create 'usage' tx and post to Guest
-    res.status(200).json({ message: "Checkout integration executed" });
+    // 2. Fetch all 'issue' and 'return' transactions for this room & guest
+    const [issuedTxs, returnTxs] = await Promise.all([
+      InventoryTransaction.find({ room: roomId, guest: guestId, transactionType: 'issue' }),
+      InventoryTransaction.find({ room: roomId, guest: guestId, transactionType: 'return' })
+    ]);
+
+    // 3. Aggregate quantities per item
+    const issuedMap = {};
+    for (const tx of issuedTxs) {
+      const key = tx.item.toString();
+      issuedMap[key] = (issuedMap[key] || 0) + tx.quantity;
+    }
+    const returnMap = {};
+    for (const tx of returnTxs) {
+      const key = tx.item.toString();
+      returnMap[key] = (returnMap[key] || 0) + tx.quantity;
+    }
+
+    // 4. Compute net usage and record 'usage' transactions
+    const usageTxs = [];
+    for (const itemId in issuedMap) {
+      const netUsed = issuedMap[itemId] - (returnMap[itemId] || 0);
+      if (netUsed > 0) {
+        // Create usage transaction
+        const usageTx = await InventoryTransaction.create({
+          item:            itemId,
+          room:            roomId,
+          guest:           guestId,
+          transactionType: 'usage',
+          quantity:        netUsed,
+          createdBy:       req.user.userId
+        });
+        // Decrement the global stock for that item
+        await InventoryItem.findByIdAndUpdate(itemId, {
+          $inc: { quantityOnHand: -netUsed }
+        });
+        usageTxs.push(usageTx);
+      }
+    }
+
+    // 5. Return the new usage transactions
+    return res.status(200).json({
+      success: true,
+      message: 'Checkout integration executed successfully.',
+      data:    usageTxs
+    });
+
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    console.error('handleRoomCheckout Error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error on check-out integration.'
+    });
   }
 };
