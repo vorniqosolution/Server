@@ -1,7 +1,7 @@
 const Guest = require("../model/guest");
 const Room = require("../model/room");
 const Discount = require("../model/discount");
-const axios = require("axios");
+const axios = require('axios');
 const mongoose = require("mongoose");
 
 exports.createGuest = async (req, res) => {
