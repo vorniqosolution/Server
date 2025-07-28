@@ -116,7 +116,6 @@ exports.getGuests = async (req, res) => {
   }
 };
 
-// Get guest by ID
 exports.getGuestById = async (req, res) => {
   try {
     const guest = await Guest.findById(req.params.id)

@@ -2,8 +2,8 @@
 // Run this script to seed an initial admin user into the database
 
 require('dotenv').config();
-const connectDB = require('./config/db');
-const User = require('./model/User');
+const connectDB = require('../config/db');
+const User = require('../model/User');
 const bcrypt = require('bcryptjs');
 
 const seedAdmin = async () => {

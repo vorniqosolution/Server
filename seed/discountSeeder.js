@@ -2,9 +2,9 @@
 // Run this script to seed initial discount data into the database
 
 require('dotenv').config();
-const connectDB = require('./config/db');
-const Discount = require('./model/discount');
-const User = require('./model/User');
+const connectDB = require('../config/db');
+const Discount = require('../model/discount');
+const User = require('../model/User');
 
 const seedDiscounts = async () => {
   try {
