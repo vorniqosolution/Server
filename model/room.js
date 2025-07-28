@@ -19,7 +19,7 @@ const roomSchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      enum: ["Standard", "Dulux plus", "Deluxe", "Executive", "Presidential"]
+      enum: ["Standard", "Duluxe-Plus", "Deluxe", "Executive", "Presidential"]
     },
 
     view: {

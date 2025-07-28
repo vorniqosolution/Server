@@ -1,7 +1,7 @@
 
 require('dotenv').config();
-const connectDB = require('./config/db');
-const User = require('./model/User');
+const connectDB = require('../config/db');
+const User = require('../model/User');
 const bcrypt = require('bcryptjs');
 
 const seedRecep = async () => {

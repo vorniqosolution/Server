@@ -1,14 +1,14 @@
 // scripts/seedRooms.js
 require('dotenv').config();           // if you use a .env file
 const mongoose = require('mongoose');
-const Room = require('./model/room'); // adjust path if needed
+const Room = require('../model/room'); // adjust path if needed
 
 // 1. Define your rooms
 // (These are the ones you marked in the images,
 //  mapped into bedType / category / view / rate / owner)
 const rooms = [
-  { roomNumber: '411', bedType: 'Two Bed', category: 'Dulux plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception' },
-  { roomNumber: '605', bedType: 'Two Bed', category: 'Dulux plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception' },
+  { roomNumber: '411', bedType: 'Two Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception' },
+  { roomNumber: '605', bedType: 'Two Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception' },
 
   { roomNumber: '305', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
   { roomNumber: '311', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
