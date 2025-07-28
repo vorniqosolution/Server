@@ -1,4 +1,4 @@
-// controllers/roomController.js
+
 const Room = require("../model/room");
 
 exports.createRoom = async (req, res) => {

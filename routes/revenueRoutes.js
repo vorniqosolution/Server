@@ -14,7 +14,7 @@ router.use(authenticate);
 
 router.get("/revenue-by-category", getRevenueByCategoryAndPeriod);
 
-router.get("/by-category", compareRevenueByCategories);
+router.get("/compare-by-category", compareRevenueByCategories);
 
 router.get("/daily", getDailyRevenueSummary);
 
