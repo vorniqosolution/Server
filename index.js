@@ -9,6 +9,7 @@ const guestRoutes = require("./routes/guestRoutes");
 const discountRoutes = require("./routes/discountRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const revenueRoutes = require("./routes/revenueRoutes");
+const invoice = require("./routes/invoiceRoutes");
 
 dotenv.config();
 const app = express();
@@ -34,6 +35,7 @@ app.use("/api/guests", guestRoutes);
 app.use("/api/discounts", discountRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/revenue", revenueRoutes);
+app.use("/api/invoice", invoice);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
