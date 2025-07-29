@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const authenticate = require("../middleware/authMiddleware");
+
 const guestController = require("../controller/guestController");
 
 // Protect all guest routes
