@@ -12,7 +12,7 @@ const invoiceSchema = new mongoose.Schema(
     // This is the field that is causing the error
     invoiceNumber: {
       type: String,
-      required: true, 
+      required: true,
       unique: true,
     },
     guest: {
@@ -44,11 +44,11 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-invoiceSchema.pre('save', async function(next) {
-    if (this.isNew && !this.invoiceNumber) {
-        this.invoiceNumber = `HSQ-${Date.now()}`;
-    }
-    next();
+invoiceSchema.pre("save", async function (next) {
+  if (this.isNew && !this.invoiceNumber) {
+    this.invoiceNumber = `HSQ-${Date.now()}`;
+  }
+  next();
 });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);
