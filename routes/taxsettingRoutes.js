@@ -14,7 +14,7 @@ router.get("/setting", settingsController.getSettings);
 // --- PUT Route: Restricted to Admins only ---
 // Updates the global settings for the entire application
 router.put(
-  "/updatesetting",
+  "/update-setting",
   authorize("admin"), // Only an admin can change the tax rate
   settingsController.updateSettings
 );
