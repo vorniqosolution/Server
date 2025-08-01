@@ -6,103 +6,6 @@ const axios = require("axios");
 const Setting = require("../model/Setting");
 const mongoose = require("mongoose");
 
-// exports.createGuest = async (req, res) => {
-//   try {
-//     const {
-//       fullName,
-//       address,
-//       phone,
-//       cnic,
-//       email,
-//       roomNumber,
-//       stayDuration,
-//       paymentMethod,
-//       applyDiscount = false,
-//     } = req.body;
-
-//     // 1. Lookup room by roomNumber
-//     const room = await Room.findOne({ roomNumber });
-//     if (!room)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Room not found" });
-//     if (room.status !== "available")
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Room not available" });
-
-//     // 2. Calculate rent and discount
-//     const baseRent = room.rate * stayDuration;
-//     let totalRent = baseRent;
-//     let discountTitle = null;
-
-//     if (applyDiscount) {
-//       const today = new Date();
-//       const validDiscount = await Discount.findOne({
-//         startDate: { $lte: today },
-//         endDate: { $gte: today },
-//       });
-//       if (!validDiscount)
-//         return res
-//           .status(400)
-//           .json({
-//             success: false,
-//             message: "No valid discount available today",
-//           });
-//       totalRent = baseRent * (1 - validDiscount.percentage / 100);
-//       discountTitle = validDiscount.title;
-//     }
-
-//     // 3. Create guest record
-//     const guest = await Guest.create({
-//       fullName,
-//       address,
-//       phone,
-//       cnic,
-//       email,
-//       room: room._id,
-//       stayDuration,
-//       paymentMethod,
-//       applyDiscount,
-//       discountTitle,
-//       totalRent,
-//       createdBy: req.user.userId,
-//     });
-
-//     // 4. Mark room occupied
-//     room.status = "occupied";
-//     await room.save();
-
-//     // 5. Notify Inventory module of check-in
-//     try {
-//       await axios.post(
-//         `${process.env.API_BASE_URL}/api/inventory/checkin`,
-//         { roomId: room._id, guestId: guest._id },
-//         {
-//           headers: {
-//             Cookie: req.headers.cookie,
-//           },
-//         }
-//       );
-//       console.log(
-//         "Calling Inventory at:",
-//         `${process.env.API_BASE_URL}/api/inventory/checkin`
-//       );
-//     } catch (invErr) {
-//       console.error("Inventory check-in failed:", invErr.message);
-//       // Continue without blocking check-in
-//     }
-
-//     return res
-//       .status(201)
-//       .json({ success: true, message: "Guest checked in", data: guest });
-//   } catch (err) {
-//     console.error("createGuest Error:", err);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server error", error: err.message });
-//   }
-// };
 
 exports.createGuest = async (req, res) => {
   try {
@@ -265,12 +168,27 @@ exports.getGuestById = async (req, res) => {
     const guest = await Guest.findById(req.params.id)
       .populate("room", "roomNumber bedType category rate status view")
       .populate("createdBy", "name email");
-    if (!guest) return res.status(404).json({ message: "Guest not found" });
-    res.status(200).json({ guest });
+
+    if (!guest) {
+      return res.status(404).json({ message: "Guest not found" });
+    }
+
+    const invoice = await Invoice.findOne({ guest: guest._id });
+
+    res.status(200).json({
+      data: {
+        guest,
+        invoice: invoice || null
+      }
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({
+      message: "Server error",
+      error: err.message
+    });
   }
 };
+
 
 exports.checkoutGuest = async (req, res) => {
   try {
@@ -409,14 +327,14 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
 exports.UpdateGuestById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, cnic, paymentmethod, address } = req.body;
+    const { fullName, email, phone, cnic, paymentMethod, address } = req.body;
 
     console.log("Received data:", {
-      name,
+      fullName,
       email,
       phone,
       cnic,
-      paymentmethod,
+      paymentMethod,
       address,
     });
     console.log("Guest ID:", id);
@@ -424,11 +342,11 @@ exports.UpdateGuestById = async (req, res) => {
     const updatedGuest = await Guest.findByIdAndUpdate(
       id,
       {
-        fullName: name,
+        fullName: fullName,
         email: email,
         phone: phone,
         cnic: cnic,
-        paymentMethod: paymentmethod,
+        paymentMethod: paymentMethod,
         address: address,
       },
       { new: true, runValidators: true }

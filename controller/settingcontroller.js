@@ -19,35 +19,46 @@ exports.getSettings = async (req, res) => {
       .status(500)
       .json({ success: false, message: "Server error", error: err.message });
   }
-};
+}; // Replace with actual settings doc _id or store it in env
 
-// UPDATE the application settings (Admin only)
 exports.updateSettings = async (req, res) => {
   try {
     const { taxRate, currencySymbol, hotelName } = req.body;
-    const role = req.user.role;
-    if (role !== "admin") {
+    console.log("Updating settings with:", { taxRate, currencySymbol, hotelName });
+    
+    // Ensure user object exists and role is accessible
+    if (!req.user || req.user.role !== 'admin') {
       return res
-        .status(404)
-        .json({ message: "Only Admin can changed the setting" });
+        .status(403)
+        .json({ message: "Only admin can change the settings" });
     }
-    // Use findByIdAndUpdate with 'upsert: true'.
-    // This will update the document if it exists, or create it if it doesn't.
-    // It's a very robust way to handle this single-document model.
+
+    // Validate inputs (optional but recommended)
+    if (typeof taxRate !== 'number' || !currencySymbol || !hotelName) {
+      return res.status(400).json({ message: 'Invalid input values' });
+    }
+
     const updatedSettings = await Settings.findByIdAndUpdate(
       SETTINGS_ID,
       { taxRate, currencySymbol, hotelName },
       { new: true, upsert: true, runValidators: true }
     );
 
+    if (!updatedSettings) {
+      return res.status(404).json({ message: 'Settings not found' });
+    }
+
     res.status(200).json({
       success: true,
-      message: "Settings updated successfully",
+      message: 'Settings updated successfully',
       data: updatedSettings,
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: err.message,
+    });
   }
 };
+
