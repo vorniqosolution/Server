@@ -402,39 +402,3 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
-
-// ... (keep getGuests, getGuestById, etc. as they are)
-
-// Add Settings to your imports at the top
-// const Settings = require('../model/settings');
-
-exports.createGuest = async (req, res) => {
-  try {
-    // ... (Your existing code to get guest details and find the room)
-
-    // --- THIS IS THE KEY CHANGE ---
-    // 1. Fetch the current settings from the database
-    const settings = await Settings.findById("global_settings");
-    const taxRate = settings ? settings.taxRate : 0; // Use the dynamic rate, or 0 if settings don't exist
-    // --- END OF CHANGE ---
-
-    // 2. Calculate invoice totals using the dynamic tax rate
-    const subtotal = room.rate * stayDuration;
-    // const discountAmount = ...; // Your discount logic
-    const taxAmount = (subtotal - discountAmount) * (taxRate / 100);
-    const grandTotal = subtotal - discountAmount + taxAmount;
-
-    // 3. Create the invoice
-    const invoice = await Invoice.create({
-      // ... all other invoice details
-      taxRate: taxRate, // <-- Now dynamic
-      taxAmount: taxAmount, // <-- Now dynamic
-      grandTotal: grandTotal,
-      // ...
-    });
-
-    // ... (rest of your function)
-  } catch (err) {
-    // ... your error handling
-  }
-};
