@@ -2,7 +2,8 @@ const Guest = require("../model/guest");
 const Room = require("../model/room");
 const Discount = require("../model/discount");
 const Invoice = require("../model/invoice");
-const axios = require('axios');
+const axios = require("axios");
+const Setting = require("../model/Setting");
 const mongoose = require("mongoose");
 
 // exports.createGuest = async (req, res) => {
@@ -103,18 +104,31 @@ const mongoose = require("mongoose");
 //   }
 // };
 
-
 exports.createGuest = async (req, res) => {
   try {
     const {
-      fullName, address, phone, cnic, email, roomNumber,
-      stayDuration, paymentMethod, applyDiscount = false,
+      fullName,
+      address,
+      phone,
+      cnic,
+      email,
+      roomNumber,
+      stayDuration,
+      paymentMethod,
+      applyDiscount = false,
     } = req.body;
+    console.log("sds", stayDuration);
 
     // 1. Lookup room
     const room = await Room.findOne({ roomNumber });
-    if (!room) return res.status(404).json({ success: false, message: "Room not found" });
-    if (room.status !== "available") return res.status(400).json({ success: false, message: "Room not available" });
+    if (!room)
+      return res
+        .status(404)
+        .json({ success: false, message: "Room not found" });
+    if (room.status !== "available")
+      return res
+        .status(400)
+        .json({ success: false, message: "Room not available" });
 
     // 2. Calculate rent
     const baseRent = room.rate * stayDuration;
@@ -124,9 +138,15 @@ exports.createGuest = async (req, res) => {
 
     if (applyDiscount) {
       const today = new Date();
-      const validDiscount = await Discount.findOne({ startDate: { $lte: today }, endDate: { $gte: today } });
-      if (!validDiscount) return res.status(400).json({ success: false, message: "No valid discount available" });
-      
+      const validDiscount = await Discount.findOne({
+        startDate: { $lte: today },
+        endDate: { $gte: today },
+      });
+      if (!validDiscount)
+        return res
+          .status(400)
+          .json({ success: false, message: "No valid discount available" });
+
       discountAmount = baseRent * (validDiscount.percentage / 100);
       totalRent = baseRent - discountAmount;
       discountTitle = validDiscount.title;
@@ -134,31 +154,47 @@ exports.createGuest = async (req, res) => {
 
     // 3. Create guest record
     const guest = await Guest.create({
-      fullName, address, phone, cnic, email, room: room._id,
-      stayDuration, paymentMethod, applyDiscount, discountTitle,
-      totalRent, createdBy: req.user.userId,
+      fullName,
+      address,
+      phone,
+      cnic,
+      email,
+      room: room._id,
+      stayDuration,
+      paymentMethod,
+      applyDiscount,
+      discountTitle,
+      totalRent,
+      createdBy: req.user.userId,
     });
 
     // 4. Mark room occupied
     room.status = "occupied";
     await room.save();
-
+    // changes
+    // const settings = await Setting.findById("global_settings");
+    // console.log("Setting", settings);
+    // const taxRate = settings ? settings.taxRate : 0; // Use the dynamic rate, or 0 if settings don't exist
+    // const taxRate = 10;
+    // changes end
     // =================================================================
     // 5. AUTO-GENERATE INVOICE (NEW SECTION)
     // =================================================================
-    const taxRate = 10; // Example 10% tax rate, you can move this to a config file
+    // const taxRate = 10; // Example 10% tax rate, you can move this to a config file
     const subtotal = room.rate * stayDuration;
     const taxAmount = (subtotal - discountAmount) * (taxRate / 100);
     const grandTotal = subtotal - discountAmount + taxAmount;
 
     const invoice = await Invoice.create({
       guest: guest._id,
-      items: [{
-        description: `Room Rent (${room.category} - #${room.roomNumber})`,
-        quantity: stayDuration,
-        unitPrice: room.rate,
-        total: subtotal
-      }],
+      items: [
+        {
+          description: `Room Rent (${room.category} - #${room.roomNumber})`,
+          quantity: stayDuration,
+          unitPrice: room.rate,
+          total: subtotal,
+        },
+      ],
       subtotal,
       discountAmount,
       taxRate,
@@ -196,16 +232,16 @@ exports.createGuest = async (req, res) => {
       message: "Guest checked in successfully",
       data: {
         guest,
-        invoice // <-- SEND INVOICE TO FRONTEND
-      }
+        invoice, // <-- SEND INVOICE TO FRONTEND
+      },
     });
-
   } catch (err) {
     console.error("createGuest Error:", err);
-    return res.status(500).json({ success: false, message: "Server error", error: err.message });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
-
 
 exports.getGuests = async (req, res) => {
   try {
@@ -330,15 +366,17 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
     }
 
     // First, find all rooms of the specified category
-    const roomsInCategory = await Room.find({ category: category }).select('_id');
-    const roomIds = roomsInCategory.map(room => room._id);
+    const roomsInCategory = await Room.find({ category: category }).select(
+      "_id"
+    );
+    const roomIds = roomsInCategory.map((room) => room._id);
 
     if (roomIds.length === 0) {
       return res.status(200).json({
         success: true,
         count: 0,
         data: [],
-        message: `No rooms found for category: ${category}`
+        message: `No rooms found for category: ${category}`,
       });
     }
 
@@ -347,11 +385,11 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
     // 2. In one of the rooms from our category
     const checkedInGuests = await Guest.find({
       status: "checked-in",
-      room: { $in: roomIds }
+      room: { $in: roomIds },
     })
-    .populate('room', 'roomNumber bedType view rate') // Include room details
-    .populate('createdBy', 'name email') // Include admin who created the booking
-    .sort({ checkInAt: -1 }); // Most recent check-ins first
+      .populate("room", "roomNumber bedType view rate") // Include room details
+      .populate("createdBy", "name email") // Include admin who created the booking
+      .sort({ checkInAt: -1 }); // Most recent check-ins first
 
     res.status(200).json({
       success: true,
@@ -359,7 +397,6 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
       count: checkedInGuests.length,
       data: checkedInGuests,
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: "Server Error" });
@@ -368,3 +405,36 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
 
 // ... (keep getGuests, getGuestById, etc. as they are)
 
+// Add Settings to your imports at the top
+// const Settings = require('../model/settings');
+
+exports.createGuest = async (req, res) => {
+  try {
+    // ... (Your existing code to get guest details and find the room)
+
+    // --- THIS IS THE KEY CHANGE ---
+    // 1. Fetch the current settings from the database
+    const settings = await Settings.findById("global_settings");
+    const taxRate = settings ? settings.taxRate : 0; // Use the dynamic rate, or 0 if settings don't exist
+    // --- END OF CHANGE ---
+
+    // 2. Calculate invoice totals using the dynamic tax rate
+    const subtotal = room.rate * stayDuration;
+    // const discountAmount = ...; // Your discount logic
+    const taxAmount = (subtotal - discountAmount) * (taxRate / 100);
+    const grandTotal = subtotal - discountAmount + taxAmount;
+
+    // 3. Create the invoice
+    const invoice = await Invoice.create({
+      // ... all other invoice details
+      taxRate: taxRate, // <-- Now dynamic
+      taxAmount: taxAmount, // <-- Now dynamic
+      grandTotal: grandTotal,
+      // ...
+    });
+
+    // ... (rest of your function)
+  } catch (err) {
+    // ... your error handling
+  }
+};
