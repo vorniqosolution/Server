@@ -172,9 +172,10 @@ exports.createGuest = async (req, res) => {
     room.status = "occupied";
     await room.save();
     // changes
-    // const settings = await Setting.findById("global_settings");
-    // console.log("Setting", settings);
-    // const taxRate = settings ? settings.taxRate : 0; // Use the dynamic rate, or 0 if settings don't exist
+    const settings = await Setting.findById("global_settings");
+    console.log("Setting", settings);
+    const taxRate = settings ? settings.taxRate : 0; // Use the dynamic rate, or 0 if settings don't exist
+    console.log("taxRate", taxRate);
     // const taxRate = 10;
     // changes end
     // =================================================================
@@ -186,6 +187,7 @@ exports.createGuest = async (req, res) => {
     const grandTotal = subtotal - discountAmount + taxAmount;
 
     const invoice = await Invoice.create({
+      invoiceNumber: `HSQ-${Date.now()}`,
       guest: guest._id,
       items: [
         {
@@ -203,6 +205,7 @@ exports.createGuest = async (req, res) => {
       dueDate: guest.checkOutAt, // This will be null initially, can be updated at checkout
       createdBy: req.user.userId,
     });
+    console.log("invoice", invoice);
     // =================================================================
 
     // 6. Notify Inventory (if applicable)
@@ -400,5 +403,50 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: "Server Error" });
+  }
+};
+
+exports.UpdateGuestById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, phone, cnic, paymentmethod, address } = req.body;
+
+    console.log("Received data:", {
+      name,
+      email,
+      phone,
+      cnic,
+      paymentmethod,
+      address,
+    });
+    console.log("Guest ID:", id);
+
+    const updatedGuest = await Guest.findByIdAndUpdate(
+      id,
+      {
+        fullName: name,
+        email: email,
+        phone: phone,
+        cnic: cnic,
+        paymentMethod: paymentmethod,
+        address: address,
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedGuest) {
+      return res.status(404).json({ message: "Guest not found" });
+    }
+
+    return res.status(200).json({
+      message: "Guest updated successfully",
+      data: updatedGuest,
+    });
+  } catch (error) {
+    console.error("UpdateGuestById Error:", error);
+    return res.status(500).json({
+      message: "Internal server error while updating guest",
+      error: error.message,
+    });
   }
 };
