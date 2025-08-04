@@ -120,6 +120,7 @@ exports.createGuest = async (req, res) => {
       taxRate,
       taxAmount,
       grandTotal,
+      dditionaldiscount: additionaldiscount,
       dueDate: guest.checkOutAt, // This will be null initially, can be updated at checkout
       createdBy: req.user.userId,
     });
