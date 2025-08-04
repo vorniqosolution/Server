@@ -9,7 +9,7 @@ const guestSchema = new mongoose.Schema(
       type: String,
       trim: true,
       lowercase: true,
-      // match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, "Please fill a valid email address"] 
+      // match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, "Please fill a valid email address"]
     },
     cnic: { type: String, required: true, trim: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: "Room", required: true },
@@ -18,7 +18,7 @@ const guestSchema = new mongoose.Schema(
       type: String,
       default: function () {
         return this.checkInAt.toTimeString().slice(0, 5);
-      }
+      },
     },
     checkOutAt: { type: Date },
     checkOutTime: {
@@ -27,7 +27,7 @@ const guestSchema = new mongoose.Schema(
         return this.checkOutAt
           ? this.checkOutAt.toTimeString().slice(0, 5)
           : null;
-      }
+      },
     },
     status: {
       type: String,
@@ -44,13 +44,15 @@ const guestSchema = new mongoose.Schema(
     applyDiscount: { type: Boolean, default: false },
     discountTitle: { type: String }, // Optional for reference
     totalRent: { type: Number }, // calculated final rent
+    gst: { type: Number }, //change
+    additionaldiscount: { type: Number },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
   },
-  
+
   { timestamps: true }
 );
 

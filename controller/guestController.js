@@ -6,10 +6,9 @@ const axios = require("axios");
 const Setting = require("../model/Setting");
 const mongoose = require("mongoose");
 
-
 exports.createGuest = async (req, res) => {
   try {
-    const {
+    let {
       fullName,
       address,
       phone,
@@ -19,8 +18,10 @@ exports.createGuest = async (req, res) => {
       stayDuration,
       paymentMethod,
       applyDiscount = false,
+      additionaldiscount = 0, // change: default value assigned directly during destructuring
     } = req.body;
-    console.log("sds", stayDuration);
+
+    console.log("additionaldiscount", additionaldiscount);
 
     // 1. Lookup room
     const room = await Room.findOne({ roomNumber });
@@ -34,26 +35,42 @@ exports.createGuest = async (req, res) => {
         .json({ success: false, message: "Room not available" });
 
     // 2. Calculate rent
-    const baseRent = room.rate * stayDuration;
-    let totalRent = baseRent;
+    let baseRent = room.rate * stayDuration;
+    baseRent -= additionaldiscount; // change: subtract additional discount
+    console.log("base rent with additional discount", baseRent);
+
     let discountAmount = 0;
     let discountTitle = null;
+    let taxAmount = 0; // change: declare here to ensure it's available in both conditions
+    let totalRent = baseRent;
 
+    // Get tax settings
+    const settings = await Setting.findById("global_settings");
+    // console.log("Setting", settings);
+    const taxRate = settings ? settings.taxRate : 0; // change: get tax rate from settings
+    console.log("taxRate", taxRate);
+
+    // Apply percentage discount if applicable
     if (applyDiscount) {
       const today = new Date();
       const validDiscount = await Discount.findOne({
         startDate: { $lte: today },
         endDate: { $gte: today },
       });
+
       if (!validDiscount)
         return res
           .status(400)
           .json({ success: false, message: "No valid discount available" });
 
-      discountAmount = baseRent * (validDiscount.percentage / 100);
-      totalRent = baseRent - discountAmount;
-      discountTitle = validDiscount.title;
+      discountAmount = baseRent * (validDiscount.percentage / 100); // change
+      totalRent = baseRent - discountAmount; // change
+      discountTitle = validDiscount.title; // change
     }
+
+    // Calculate tax and final total rent
+    taxAmount = (totalRent * taxRate) / 100; // change: GST calculation applied regardless of discount
+    totalRent += taxAmount; // change
 
     // 3. Create guest record
     const guest = await Guest.create({
@@ -68,17 +85,15 @@ exports.createGuest = async (req, res) => {
       applyDiscount,
       discountTitle,
       totalRent,
+      gst: taxAmount, // change: saving GST in database
+      additionaldiscount: additionaldiscount, // change: saving additional discount in DB
       createdBy: req.user.userId,
     });
 
     // 4. Mark room occupied
     room.status = "occupied";
     await room.save();
-    // changes
-    const settings = await Setting.findById("global_settings");
-    console.log("Setting", settings);
-    const taxRate = settings ? settings.taxRate : 0; // Use the dynamic rate, or 0 if settings don't exist
-    console.log("taxRate", taxRate);
+
     // const taxRate = 10;
     // changes end
     // =================================================================
@@ -86,7 +101,7 @@ exports.createGuest = async (req, res) => {
     // =================================================================
     // const taxRate = 10; // Example 10% tax rate, you can move this to a config file
     const subtotal = room.rate * stayDuration;
-    const taxAmount = (subtotal - discountAmount) * (taxRate / 100);
+    taxAmount = (subtotal - discountAmount) * (taxRate / 100);
     const grandTotal = subtotal - discountAmount + taxAmount;
 
     const invoice = await Invoice.create({
@@ -178,17 +193,16 @@ exports.getGuestById = async (req, res) => {
     res.status(200).json({
       data: {
         guest,
-        invoice: invoice || null
-      }
+        invoice: invoice || null,
+      },
     });
   } catch (err) {
     res.status(500).json({
       message: "Server error",
-      error: err.message
+      error: err.message,
     });
   }
 };
-
 
 exports.checkoutGuest = async (req, res) => {
   try {
