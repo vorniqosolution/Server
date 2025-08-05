@@ -9,5 +9,6 @@ router.post("/create-Discount", discountController.createDiscount);
 router.get("/get-Discounts", discountController.getDiscounts);
 router.delete("/delete-discount/:id", discountController.deleteDiscount);
 router.get("/currentdiscount", discountController.GetCurrentDiscount);
+router.patch("/updatediscount/:id", discountController.UpdateDiscount);
 
 module.exports = router;

@@ -16,6 +16,45 @@ exports.createDiscount = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+// Update discount by ID
+exports.UpdateDiscount = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, percentage, startDate, endDate } = req.body;
+    if ((!title, !percentage, !startDate, !endDate)) {
+      return res
+        .status(400)
+        .json({ message: "Please enter all credentials for UpdateDiscount" });
+    }
+    const updatedDiscount = await Discount.findByIdAndUpdate(
+      id,
+      {
+        title,
+        percentage,
+        startDate,
+        endDate,
+        updatedAt: new Date(),
+      },
+      { new: true, runValidators: true }
+    );
+    if (!updatedDiscount) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Discount not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Discount updated successfully",
+      data: updatedDiscount,
+    });
+  } catch (err) {
+    console.error("UpdateDiscount Error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
+  }
+};
 
 // Get all discounts
 exports.getDiscounts = async (req, res) => {
