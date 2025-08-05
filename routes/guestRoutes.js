@@ -21,6 +21,5 @@ router.get("/get-Guest-By-Id/:id", guestController.getGuestById);
 
 router.patch("/check-out-Guest/:id/checkout", guestController.checkoutGuest);
 router.patch("/update-guest/:id", guestController.UpdateGuestById);
-router.delete("/guests/:id", authorie('admin'), guestController.deleteGuest);
-
+router.delete("/guests/:id", authorie("admin"), guestController.deleteGuest);
 module.exports = router;

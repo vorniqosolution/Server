@@ -4,7 +4,6 @@ const Discount = require("../model/discount");
 exports.createDiscount = async (req, res) => {
   try {
     const { title, percentage, startDate, endDate } = req.body;
-    console.log("REQ.USER:", req.user);
     const discount = await Discount.create({
       title,
       percentage,

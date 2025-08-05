@@ -18,7 +18,7 @@ exports.createGuest = async (req, res) => {
       stayDuration,
       paymentMethod,
       applyDiscount = false,
-      additionaldiscount = 0, // change: default value assigned directly during destructuring
+      additionaldiscount = 0,
     } = req.body;
 
     console.log("additionaldiscount", additionaldiscount);
@@ -36,18 +36,16 @@ exports.createGuest = async (req, res) => {
 
     // 2. Calculate rent
     let baseRent = room.rate * stayDuration;
-    baseRent -= additionaldiscount; // change: subtract additional discount
-    console.log("base rent with additional discount", baseRent);
+    baseRent -= additionaldiscount; // ✅ subtract additional discount first
 
     let discountAmount = 0;
     let discountTitle = null;
-    let taxAmount = 0; // change: declare here to ensure it's available in both conditions
+    let taxAmount = 0; // ✅ initialized before
     let totalRent = baseRent;
 
     // Get tax settings
     const settings = await Setting.findById("global_settings");
-    // console.log("Setting", settings);
-    const taxRate = settings ? settings.taxRate : 0; // change: get tax rate from settings
+    const taxRate = settings ? settings.taxRate : 0; // ✅ get tax rate
     console.log("taxRate", taxRate);
 
     // Apply percentage discount if applicable
@@ -63,14 +61,14 @@ exports.createGuest = async (req, res) => {
           .status(400)
           .json({ success: false, message: "No valid discount available" });
 
-      discountAmount = baseRent * (validDiscount.percentage / 100); // change
-      totalRent = baseRent - discountAmount; // change
-      discountTitle = validDiscount.title; // change
+      discountAmount = baseRent * (validDiscount.percentage / 100); // ✅ percentage discount on baseRent
+      totalRent = baseRent - discountAmount; // ✅ apply discount
+      discountTitle = validDiscount.title;
     }
 
     // Calculate tax and final total rent
-    taxAmount = (totalRent * taxRate) / 100; // change: GST calculation applied regardless of discount
-    totalRent += taxAmount; // change
+    taxAmount = (totalRent * taxRate) / 100; // ✅ tax on discounted amount
+    totalRent += taxAmount; // ✅ final amount with tax
 
     // 3. Create guest record
     const guest = await Guest.create({
@@ -85,8 +83,8 @@ exports.createGuest = async (req, res) => {
       applyDiscount,
       discountTitle,
       totalRent,
-      gst: taxAmount, // change: saving GST in database
-      additionaldiscount: additionaldiscount, // change: saving additional discount in DB
+      gst: taxAmount, // ✅ storing GST
+      additionaldiscount: additionaldiscount, // ✅ storing additional discount
       createdBy: req.user.userId,
     });
 
@@ -94,15 +92,21 @@ exports.createGuest = async (req, res) => {
     room.status = "occupied";
     await room.save();
 
-    // const taxRate = 10;
-    // changes end
-    // =================================================================
-    // 5. AUTO-GENERATE INVOICE (NEW SECTION)
-    // =================================================================
-    // const taxRate = 10; // Example 10% tax rate, you can move this to a config file
-    const subtotal = room.rate * stayDuration;
-    taxAmount = (subtotal - discountAmount) * (taxRate / 100);
-    const grandTotal = subtotal - discountAmount + taxAmount;
+    // 5. Invoice Calculation (fully synced with guest logic) ✅
+    let invoiceBaseRent = room.rate * stayDuration; // ✅
+    invoiceBaseRent -= additionaldiscount; // ✅
+
+    let invoiceDiscountAmount = 0;
+    let invoiceTaxAmount = 0;
+    let invoiceTotal = invoiceBaseRent;
+
+    if (applyDiscount) {
+      invoiceDiscountAmount = invoiceBaseRent * (discountAmount / baseRent); // ✅ same ratio as guest logic
+      invoiceTotal = invoiceBaseRent - invoiceDiscountAmount; // ✅
+    }
+
+    invoiceTaxAmount = (invoiceTotal * taxRate) / 100; // ✅
+    invoiceTotal += invoiceTaxAmount; // ✅
 
     const invoice = await Invoice.create({
       invoiceNumber: `HSQ-${Date.now()}`,
@@ -112,19 +116,21 @@ exports.createGuest = async (req, res) => {
           description: `Room Rent (${room.category} - #${room.roomNumber})`,
           quantity: stayDuration,
           unitPrice: room.rate,
-          total: subtotal,
+          total: invoiceBaseRent, // ✅ already reduced by additional discount
         },
       ],
-      subtotal,
-      discountAmount,
+      subtotal: invoiceBaseRent, // ✅ after additional discount
+      discountAmount: invoiceDiscountAmount, // ✅ calculated same as above
       taxRate,
-      taxAmount,
-      grandTotal,
-      dditionaldiscount: additionaldiscount,
-      dueDate: guest.checkOutAt, // This will be null initially, can be updated at checkout
+      taxAmount: invoiceTaxAmount,
+      grandTotal: invoiceTotal,
+      additionaldiscount,
+      dueDate: guest.checkOutAt,
       createdBy: req.user.userId,
     });
+
     console.log("invoice", invoice);
+
     // =================================================================
 
     // 6. Notify Inventory (if applicable)
