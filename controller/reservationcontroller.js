@@ -51,10 +51,10 @@ exports.createReservation = async (req, res) => {
         .json({ success: false, message: "Room is under maintenance." });
     }
 
-    // const startAt = new Date(checkin);
-    // const endAt = new Date(checkout);
-    // console.log("startAt", startAt);
-    // console.log("endAt", endAt);
+    const startAt = new Date(checkin);
+    const endAt = new Date(checkout);
+    console.log("startAt", startAt);
+    console.log("endAt", endAt);
     // 2. Validate dates
     if (endAt <= startAt) {
       return res
