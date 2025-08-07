@@ -3,26 +3,23 @@ const router = express.Router();
 const authenticate = require("../middleware/authMiddleware");
 
 const {
-  getRevenueByCategoryAndPeriod,
-  compareRevenueByCategories,
-  getDailyRevenueSummary, 
-  getOccupancyAnalytics,
-  getRevenueByPaymentMethods,
-  debugRevenueQuery
+  GetAllRevenue,
+  GetMonthlyRevenue,
+  GetYearlyRevenue,
+  GetRevenueRoomCategories,
+  CheckDiscountedGuest,
+  GetWeeklyRevenue,
+  GetDailyRevenue,
 } = require("../controller/revenueController");
 
 router.use(authenticate);
 
-router.get("/revenue-by-category", getRevenueByCategoryAndPeriod);
-
-router.get("/compare-by-category", compareRevenueByCategories);
-
-router.get("/daily", getDailyRevenueSummary);
-
-router.get("/occupancy-rate", getOccupancyAnalytics);
-
-router.get("/payment-methods", getRevenueByPaymentMethods);
-
-// router.get('/debug', debugRevenueQuery);
+router.get("/allrevenue", GetAllRevenue);
+router.get("/getmonthlyrevenue", GetMonthlyRevenue);
+router.get("/getyearlyrevenue", GetYearlyRevenue);
+router.get("/getroomcategories", GetRevenueRoomCategories);
+router.get("/getdiscountedguest", CheckDiscountedGuest);
+router.get("/getweeklyrevenue", GetWeeklyRevenue);
+router.get("/getdailyrevenue", GetDailyRevenue);
 
 module.exports = router;

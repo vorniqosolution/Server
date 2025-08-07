@@ -42,7 +42,7 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/revenue", revenueRoutes);
 app.use("/api/invoice", invoice);
 app.use("/api/admin", adminRoutes);
-app.use("/api/admin", SettingRoutes);
+app.use("/api/reservation", SettingRoutes);
 // reservation room
 app.use("/api/room", reservationRoutes);
 

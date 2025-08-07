@@ -9,11 +9,9 @@ router.use(authenticate);
 router.post("/create-Discount", discountController.createDiscount);
 router.get("/get-Discounts", discountController.getDiscounts);
 router.get("/currentdiscount", discountController.GetCurrentDiscount);
-router.patch("/updatediscount/:id", discountController.UpdateDiscount);
+router.patch("/update-discount/:id", discountController.UpdateDiscount);
 
-router.use(authorize('admin'));
+router.use(authorize("admin"));
 router.delete("/delete-discount/:id", discountController.deleteDiscount);
 
 module.exports = router;
-
-

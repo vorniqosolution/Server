@@ -5,19 +5,15 @@ const {
   getReservations,
   getReservationById,
   cancelReservation,
-  checkInReservation,
 } = require("../controller/reservationcontroller");
 const authenticate = require("../middleware/authMiddleware");
 
 // Protect all guest routes
 router.use(authenticate);
 
-router.route("/reservation").post(createReservation).get(getReservations);
-
-router.route("/:id").get(getReservationById);
-
-router.route("/reservation/:id/cancel").delete(cancelReservation);
-
-// router.route("/:id/checkin").post(checkInReservation);
+router.post("/create-reservation", createReservation);
+router.get("/get-reservations", getReservations);
+router.get("/get-reservation/:id", getReservationById);
+router.delete("/cancel-reservation/:id/cancel", cancelReservation);
 
 module.exports = router;
