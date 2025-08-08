@@ -14,12 +14,12 @@ const {
 
 router.use(authenticate);
 
-router.get("/allrevenue", GetAllRevenue);
-router.get("/getmonthlyrevenue", GetMonthlyRevenue);
-router.get("/getyearlyrevenue", GetYearlyRevenue);
-router.get("/getroomcategories", GetRevenueRoomCategories);
-router.get("/getdiscountedguest", CheckDiscountedGuest);
-router.get("/getweeklyrevenue", GetWeeklyRevenue);
-router.get("/getdailyrevenue", GetDailyRevenue);
+router.get("/all-revenue", GetAllRevenue);
+router.get("/get-monthly-revenue", GetMonthlyRevenue);
+router.get("/get-yearly-revenue", GetYearlyRevenue);
+router.get("/get-room-categories", GetRevenueRoomCategories);
+router.get("/get-discounted-guest", CheckDiscountedGuest);
+router.get("/get-weekly-revenue", GetWeeklyRevenue);
+router.get("/get-daily-revenue", GetDailyRevenue);
 
 module.exports = router;
