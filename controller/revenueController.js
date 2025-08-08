@@ -2,39 +2,39 @@ const Guest = require("../model/guest");
 const Room = require("../model/room");
 const Invoice = require("../model/invoice");
 
-exports.GetAllRevenue = async (req, res) => {
-  try {
-    const result = await Guest.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$totalRent" },
-          totalReservations: { $sum: 1 },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          totalRevenue: 1,
-          totalReservations: 1,
-        },
-      },
-    ]);
-    const total = result[0]?.totalRevenue || 0;
-    // console.log("result", total);
+// exports.GetAllRevenue = async (req, res) => {
+//   try {
+//     const result = await Guest.aggregate([
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalReservations: { $sum: 1 },
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           totalRevenue: 1,
+//           totalReservations: 1,
+//         },
+//       },
+//     ]);
+//     const total = result[0]?.totalRevenue || 0;
+//     // console.log("result", total);
 
-    res.status(200).json({
-      success: true,
-      totalrevene: total,
-    });
-  } catch (err) {
-    console.error("Error getting total revenue:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get total revenue",
-    });
-  }
-};
+//     res.status(200).json({
+//       success: true,
+//       totalrevene: total,
+//     });
+//   } catch (err) {
+//     console.error("Error getting total revenue:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get total revenue",
+//     });
+//   }
+// };
 
 exports.GetMonthlyRevenue = async (req, res) => {
   try {
@@ -292,15 +292,158 @@ exports.CheckDiscountedGuest = async (req, res) => {
     });
   }
 };
-
 // skip id from getweekly revenue. pending
+// exports.GetWeeklyRevenue = async (req, res) => {
+//   try {
+//     const { week, year } = req.query;
+//     const parsedWeek = parseInt(week);
+//     const parsedYear = parseInt(year);
+//     console.log("week", week);
+//     console.log("year", year);
+
+//     if (!parsedWeek || !parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Week and year are required in query params.",
+//       });
+//     }
+
+//     const result = await Guest.aggregate([
+//       {
+//         $addFields: {
+//           week: { $isoWeek: "$checkInAt" },
+//           year: { $isoWeekYear: "$checkInAt" },
+//         },
+//       },
+//       {
+//         $match: {
+//           week: parsedWeek,
+//           year: parsedYear,
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalGuests: { $sum: 1 },
+//         },
+//       },
+//     ]);
+
+//     const data = result[0] || { totalRevenue: 0, totalGuests: 0 };
+
+//     res.status(200).json({
+//       success: true,
+//       week: parsedWeek,
+//       year: parsedYear,
+//       weeklyrevenue: data,
+//     });
+//   } catch (error) {
+//     console.error("Error getting weekly revenue:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch weekly revenue",
+//     });
+//   }
+// };
+// skip id from daily revenue. pending
+// exports.GetDailyRevenue = async (req, res) => {
+//   try {
+//     const { day, month, year } = req.query;
+
+//     const parsedDay = parseInt(day);
+//     const parsedMonth = parseInt(month);
+//     const parsedYear = parseInt(year);
+
+//     if (!parsedDay || !parsedMonth || !parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Day, month, and year are required in query params.",
+//       });
+//     }
+
+//     const result = await Guest.aggregate([
+//       {
+//         $addFields: {
+//           day: { $dayOfMonth: "$checkInAt" },
+//           month: { $month: "$checkInAt" },
+//           year: { $year: "$checkInAt" },
+//         },
+//       },
+//       {
+//         $match: {
+//           day: parsedDay,
+//           month: parsedMonth,
+//           year: parsedYear,
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalReservations: { $sum: 1 },
+//         },
+//       },
+//     ]);
+
+//     const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+
+//     res.status(200).json({
+//       success: true,
+//       day: parsedDay,
+//       month: parsedMonth,
+//       year: parsedYear,
+//       ...data,
+//     });
+//   } catch (error) {
+//     console.error("Error getting daily revenue:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch daily revenue",
+//     });
+//   }
+// };
+
+exports.GetAllRevenue = async (req, res) => {
+  try {
+    const result = await Guest.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$totalRent" },
+          totalReservations: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          totalRevenue: 1,
+          totalReservations: 1,
+        },
+      },
+    ]);
+    const total = result[0]?.totalRevenue || 0;
+    const reservations = result[0]?.totalReservations || 0;
+
+    res.status(200).json({
+      success: true,
+      totalRevenue: total, // Fixed typo from totalrevene
+      totalReservations: reservations
+    });
+  } catch (err) {
+    console.error("Error getting total revenue:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get total revenue",
+    });
+  }
+};
+
 exports.GetWeeklyRevenue = async (req, res) => {
   try {
     const { week, year } = req.query;
     const parsedWeek = parseInt(week);
     const parsedYear = parseInt(year);
-    console.log("week", week);
-    console.log("year", year);
 
     if (!parsedWeek || !parsedYear) {
       return res.status(400).json({
@@ -326,12 +469,12 @@ exports.GetWeeklyRevenue = async (req, res) => {
         $group: {
           _id: null,
           totalRevenue: { $sum: "$totalRent" },
-          totalGuests: { $sum: 1 },
+          totalReservations: { $sum: 1 }, // Changed from totalGuests for consistency
         },
       },
     ]);
 
-    const data = result[0] || { totalRevenue: 0, totalGuests: 0 };
+    const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
 
     res.status(200).json({
       success: true,
@@ -348,7 +491,6 @@ exports.GetWeeklyRevenue = async (req, res) => {
   }
 };
 
-// skip id from daily revenue. pending
 exports.GetDailyRevenue = async (req, res) => {
   try {
     const { day, month, year } = req.query;
@@ -395,7 +537,8 @@ exports.GetDailyRevenue = async (req, res) => {
       day: parsedDay,
       month: parsedMonth,
       year: parsedYear,
-      ...data,
+      totalRevenue: data.totalRevenue,
+      totalReservations: data.totalReservations
     });
   } catch (error) {
     console.error("Error getting daily revenue:", error);
