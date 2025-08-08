@@ -6,12 +6,11 @@ const settingsController = require("../controller/settingcontroller");
 
 router.use(authenticate);
 
-
 router.get("/get-all-gst", settingsController.getSettings);
 
 router.put(
   "/update-setting",
-  authorize("admin"), 
+  authorize("admin"),
   settingsController.updateSettings
 );
 
