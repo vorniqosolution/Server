@@ -4,7 +4,6 @@ const authenticate = require("../middleware/authMiddleware");
 const authorize = require("../middleware/adminMiddleware");
 const settingsController = require("../controller/settingcontroller");
 
-// --- Apply authentication to ALL routes ---
 router.use(authenticate);
 
 router.get("/get-all-gst", settingsController.getSettings);
