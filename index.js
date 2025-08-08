@@ -42,9 +42,8 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/revenue", revenueRoutes);
 app.use("/api/invoice", invoice);
 app.use("/api/admin", adminRoutes);
-app.use("/api/admin", SettingRoutes);
-// reservation room
-app.use("/api/room", reservationRoutes);
+app.use("/api/tax", SettingRoutes);
+app.use("/api/reservation", reservationRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
