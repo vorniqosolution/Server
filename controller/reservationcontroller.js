@@ -186,3 +186,175 @@ exports.cancelReservation = async (req, res) => {
       .json({ success: false, message: "Server error", error: err.message });
   }
 };
+
+exports.GetAllReservedRoomWithDate = async (req, res) => {
+  try {
+    const { day, month, year } = req.query;
+
+    if (!month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: "Month and year are required",
+      });
+    }
+    const parsedMonth = Number(month);
+    const parsedYear = Number(year);
+    const parsedDay = day ? Number(day) : null;
+    const pipeline = [
+      {
+        $match: {
+          status: "reserved",
+        },
+      },
+      {
+        $addFields: {
+          bookingMonth: { $month: "$startAt" },
+          bookingYear: { $year: "$startAt" },
+          bookingDay: { $dayOfMonth: "$startAt" },
+        },
+      },
+      {
+        $match: {
+          bookingMonth: parsedMonth,
+          bookingYear: parsedYear,
+          ...(parsedDay && { bookingDay: parsedDay }),
+        },
+      },
+      {
+        $lookup: {
+          from: "rooms", // collection name in MongoDB
+          localField: "room",
+          foreignField: "_id",
+          as: "roomData",
+        },
+      },
+      { $unwind: "$roomData" },
+      {
+        $addFields: {
+          daysBooked: {
+            $dateDiff: {
+              startDate: "$startAt",
+              endDate: "$endAt",
+              unit: "day",
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          fullName: 1,
+          roomNumber: "$roomData.roomNumber",
+          roomStatus: "$roomData.status",
+          daysBooked: 1,
+        },
+      },
+    ];
+
+    const result = await Reservation.aggregate(pipeline);
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
+
+exports.GetAllOccupiedRoomsWithDate = async (req, res) => {
+  try {
+    const { day, month, year } = req.query;
+    if (!month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: "Month and year are required",
+      });
+    }
+    const parsedMonth = Number(month);
+    const parsedYear = Number(year);
+    const parsedDay = day ? Number(day) : null;
+
+    const pipeline = [
+      {
+        $match: {
+          status: "occupied",
+        },
+      },
+      {
+        // Agar checkOutAt nahi hai to stayDuration ka use karke calculate karo
+        $addFields: {
+          expectedCheckOutAt: {
+            $cond: [
+              { $ifNull: ["$checkOutAt", false] },
+              "$checkOutAt",
+              {
+                $add: [
+                  "$checkInAt",
+                  { $multiply: ["$stayDuration", 24 * 60 * 60 * 1000] },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      {
+        // Month/Year/Day extract for filtering
+        $addFields: {
+          bookingMonth: { $month: "$checkInAt" },
+          bookingYear: { $year: "$checkInAt" },
+          bookingDay: { $dayOfMonth: "$checkInAt" },
+        },
+      },
+      {
+        $match: {
+          bookingMonth: parsedMonth,
+          bookingYear: parsedYear,
+          ...(parsedDay && { bookingDay: parsedDay }),
+        },
+      },
+      {
+        $lookup: {
+          from: "rooms",
+          localField: "room",
+          foreignField: "_id",
+          as: "roomData",
+        },
+      },
+      { $unwind: "$roomData" },
+      {
+        $addFields: {
+          daysStayed: {
+            $dateDiff: {
+              startDate: "$checkInAt",
+              endDate: "$expectedCheckOutAt",
+              unit: "day",
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          fullName: 1,
+          roomNumber: "$roomData.roomNumber",
+          roomStatus: "$roomData.status",
+          checkInAt: 1,
+          expectedCheckOutAt: 1,
+          daysStayed: 1,
+        },
+      },
+    ];
+
+    const result = await Guest.aggregate(pipeline);
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error fetching occupied rooms:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
