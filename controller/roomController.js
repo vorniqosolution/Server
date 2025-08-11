@@ -1,6 +1,8 @@
 
 const Room = require("../model/room");
 
+const Reservation = require("../model/reservationmodel");
+
 exports.createRoom = async (req, res) => {
   try {
     const {
@@ -141,13 +143,75 @@ exports.deleteRoom = async (req, res) => {
   }
 };
 
+// exports.getAvailableRooms = async (req, res) => {
+//   try {
+//     const rooms = await Room.find({ status: "available" });
+//     res.status(200).json({ rooms });
+//   } catch (err) {
+//     res
+//       .status(500)
+//       .json({ message: "Server error", error: err.message });
+//   }
+// };
+
+// controllers/room.controller.ts
+
+
+// Was: exports.getAvailableRooms
+// Now: still named the same so you don't have to change routes.
+// It returns rooms with status in ['available','reserved'].
+// For reserved rooms, it includes one active reservation (if any).
+
+
 exports.getAvailableRooms = async (req, res) => {
   try {
-    const rooms = await Room.find({ status: "available" });
+    const today = new Date();
+
+    const rooms = await Room.aggregate([
+      // 1) Only show "available" and "reserved"
+      { $match: { status: { $in: ["available", "reserved"] } } },
+
+      // 2) Attach ONE active reservation (confirmed/reserved and not ended)
+      {
+        $lookup: {
+          from: "reservations", // mongoose pluralizes 'Reservation' -> 'reservations'
+          let: { rn: "$roomNumber" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$roomNumber", "$$rn"] },
+                status: { $in: ["reserved", "confirmed"] },
+                endAt: { $gte: today },
+              },
+            },
+            { $sort: { startAt: 1 } },
+            { $limit: 1 },
+            { $project: { _id: 1, fullName: 1, startAt: 1, endAt: 1, status: 1 } },
+          ],
+          as: "reservation",
+        },
+      },
+      { $addFields: { reservation: { $arrayElemAt: ["$reservation", 0] } } },
+
+      // 3) Keep only fields your UI needs
+      {
+        $project: {
+          _id: 1,
+          roomNumber: 1,
+          bedType: 1,
+          rate: 1,
+          category: 1,
+          status: 1,
+          reservation: 1, // will be undefined for "available" rooms
+        },
+      },
+
+      { $sort: { roomNumber: 1 } },
+    ]);
+
     res.status(200).json({ rooms });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Server error", error: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 };
