@@ -29,7 +29,7 @@ exports.login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // false in dev
       sameSite: "Lax",                                // allows cross-site POSTs
-      maxAge: 60 * 60 * 1000                          // 1 hour
+      maxAge: 7 * 24 * 60 * 60 * 1000                          
     });
 
     // 5. Send back user info only
