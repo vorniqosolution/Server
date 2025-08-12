@@ -5,7 +5,6 @@ exports.UpdatePassword = async (req, res) => {
   try {
     const { prevpassword, newpassword } = req.body;
     const userId = req.user.userId;
-
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -32,15 +31,15 @@ exports.UpdatePassword = async (req, res) => {
 };
 exports.AdminUpdateUserPassword = async (req, res) => {
   try {
-    const { userId, newPassword } = req.body;
+    const { newPassword } = req.body;
+    const { id } = req.params;
     const role = req.user.role;
     if (role !== "admin") {
       return res.status(403).json({
         message: "Access denied. Only admin can perform this action.",
       });
     }
-
-    const user = await User.findById(userId);
+    const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ message: "Recipient not found" });
     }
@@ -61,20 +60,19 @@ exports.AdminUpdateUserPassword = async (req, res) => {
 };
 exports.DeleteRecipient = async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { id } = req.params;
     const role = req.user.role;
-
     if (role !== "admin") {
       return res.status(403).json({
         message: "Access denied. Only admin can perform this action.",
       });
     }
-    const user = await User.findById(userId);
+    const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ message: "Recipient not found" });
     }
 
-    await User.findByIdAndDelete(userId);
+    await User.findByIdAndDelete(id);
 
     return res.status(200).json({
       message: "Recipient deleted successfully by admin",
