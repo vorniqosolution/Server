@@ -14,7 +14,7 @@ const SeedAccounted = async () => {
     });
     if (existingAcc) {
       console.log(
-        "Acoounted user already exists: " + process.env.ACCOUNTED_PASSWORD
+        "accountant user already exists: " + process.env.ACCOUNTED_PASSWORD
       );
       process.exit();
     }
@@ -30,17 +30,17 @@ const SeedAccounted = async () => {
       name: process.env.ACCOUNTED_NAME,
       email: process.env.ACCOUNTED_EMAIL,
       password: hashedPassword,
-      role: "accounted",
+      role: "accountant",
     });
 
     await AccUser.save();
     console.log(
-      "ACCOUNTED user seeded successfully:",
+      "Accountant user seeded successfully:",
       process.env.ACCOUNTED_EMAIL
     );
     process.exit();
   } catch (err) {
-    console.error("Error seeding ACCOUNTED User:", err);
+    console.error("Error seeding accountant User:", err);
     process.exit(1);
   }
 };

@@ -3,7 +3,7 @@ const Settings = require("../model/Setting");
 // We use a fixed ID to ensure we always work with the same settings document
 const SETTINGS_ID = "global_settings";
 
-// GET the current application settings
+
 exports.getSettings = async (req, res) => {
   try {
     // Find the settings document, or create it with defaults if it doesn't exist
@@ -19,7 +19,7 @@ exports.getSettings = async (req, res) => {
       .status(500)
       .json({ success: false, message: "Server error", error: err.message });
   }
-}; // Replace with actual settings doc _id or store it in env
+}; 
 
 exports.updateSettings = async (req, res) => {
   try {
