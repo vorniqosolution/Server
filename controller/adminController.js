@@ -87,24 +87,24 @@ exports.ViewRecipient = async (req, res) => {
   try {
     if (req.user.role !== "admin") {
       return res.status(403).json({
-        message: "Access denied. Only admin can view recipients.",
+        message: "Access denied. Only admin can view other Users.",
       });
     }
 
-    const recipients = await User.find({ role: "receptionist" }).select(
+    const Users = await User.find({ role: "receptionist" || "accountant" }).select(
       "-password"
     );
 
-    if (recipients.length === 0) {
+    if (Users.length === 0) {
       return res.status(200).json({
-        message: "No recipient added",
+        message: "No receptionist or accountant added",
         data: [],
       });
     }
 
     return res.status(200).json({
-      message: "Recipients fetched successfully",
-      data: recipients,
+      message: "Recipients or accountant fetched successfully",
+      data: Users
     });
   } catch (error) {
     console.error("ViewRecipient error:", error);
