@@ -2,407 +2,567 @@ const Guest = require("../model/guest");
 const Room = require("../model/room");
 const Invoice = require("../model/invoice");
 
+// A generic error handler for consistency
+const handleError = (res, error, functionName) => {
+  console.error(`Error in ${functionName}:`, error);
+  res.status(500).json({
+    success: false,
+    message: `Failed to fetch data in ${functionName}.`,
+  });
+};
+
+// --- Your Original Functions, Now Refactored ---
+
 exports.GetMonthlyRevenue = async (req, res) => {
   try {
     const { month, year } = req.query;
-    const parsedMonth = parseInt(month);
-    const parsedYear = parseInt(year);
-    if (!parsedMonth || !parsedYear) {
-      return res.status(400).json({
-        success: false,
-        message: "Month and year are required in query params.",
-      });
+    if (!month || !year) {
+      return res.status(400).json({ success: false, message: "Month and year are required." });
     }
-    const result = await Guest.aggregate([
-      {
-        $addFields: {
-          month: { $month: "$checkInAt" },
-          year: { $year: "$checkInAt" },
-        },
-      },
-      {
-        $match: {
-          month: parsedMonth,
-          year: parsedYear,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$totalRent" },
-          totalReservations: { $sum: 1 },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          totalRevenue: 1,
-          totalReservations: 1,
-        },
-      },
-    ]);
-    const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+
+    const data = await Guest.fetchRevenueByPeriod({
+      period: 'monthly',
+      year: parseInt(year),
+      month: parseInt(month),
+    });
+
     res.status(200).json({
       success: true,
-      month: parsedMonth,
-      year: parsedYear,
+      month: parseInt(month),
+      year: parseInt(year),
       monthlyrevenue: data,
     });
   } catch (error) {
-    console.error("Error getting monthly revenue:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch monthly revenue",
-    });
+    handleError(res, error, "GetMonthlyRevenue");
   }
 };
 
 exports.GetYearlyRevenue = async (req, res) => {
   try {
     const { year } = req.query;
-    const parsedYear = parseInt(year);
-
-    if (!parsedYear) {
-      return res.status(400).json({
-        success: false,
-        message: "Year is required in query params.",
-      });
+    if (!year) {
+      return res.status(400).json({ success: false, message: "Year is required." });
     }
-    const result = await Guest.aggregate([
-      {
-        $addFields: {
-          year: { $year: "$checkInAt" },
-        },
-      },
-      {
-        $match: {
-          year: parsedYear,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$totalRent" },
-          totalReservations: { $sum: 1 },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          totalRevenue: 1,
-          totalReservations: 1,
-        },
-      },
-    ]);
-    const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+
+    const data = await Guest.fetchRevenueByPeriod({
+      period: 'yearly',
+      year: parseInt(year),
+    });
+
     res.status(200).json({
       success: true,
-      year: parsedYear,
+      year: parseInt(year),
       ...data,
     });
   } catch (error) {
-    console.error("Error getting yearly revenue:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch yearly revenue",
-    });
-  }
-};
-
-exports.GetRevenueRoomCategories = async (req, res) => {
-  try {
-    const { month, year } = req.query;
-    const parsedMonth = parseInt(month);
-    const parsedYear = parseInt(year);
-    if (!parsedMonth || !parsedYear) {
-      return res.status(400).json({
-        success: false,
-        message: "Month and year are required in query params.",
-      });
-    }
-    const result = await Guest.aggregate([
-      {
-        $lookup: {
-          from: "rooms",
-          localField: "room",
-          foreignField: "_id",
-          as: "roomData",
-        },
-      },
-      {
-        $unwind: "$roomData",
-      },
-      {
-        $addFields: {
-          month: { $month: "$checkInAt" },
-          year: { $year: "$checkInAt" },
-        },
-      },
-      {
-        $match: {
-          month: parsedMonth,
-          year: parsedYear,
-        },
-      },
-      {
-        $group: {
-          _id: "$roomData.category",
-          totalRevenue: { $sum: "$totalRent" },
-          totalGuests: { $sum: 1 },
-        },
-      },
-      {
-        $sort: { totalRevenue: -1 },
-      },
-    ]);
-    res.status(200).json({
-      success: true,
-      month: parsedMonth,
-      year: parsedYear,
-      categories: result,
-    });
-  } catch (error) {
-    console.error("Error in category-wise revenue:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to calculate revenue by category",
-    });
-  }
-};
-
-exports.CheckDiscountedGuest = async (req, res) => {
-  try {
-    const { month, year } = req.query;
-
-    const parsedMonth = parseInt(month);
-    const parsedYear = parseInt(year);
-    if (!parsedMonth || !parsedYear) {
-      return res.status(400).json({
-        success: false,
-        message: "Month and year are required in query params.",
-      });
-    }
-
-    const guests = await Guest.aggregate([
-      // Add month and year fields
-      {
-        $addFields: {
-          month: { $month: "$checkInAt" },
-          year: { $year: "$checkInAt" },
-        },
-      },
-      // Filter by given month + year and guests with discount
-      {
-        $match: {
-          month: parsedMonth,
-          year: parsedYear,
-          applyDiscount: true,
-        },
-      },
-      // Lookup room
-      {
-        $lookup: {
-          from: "rooms",
-          localField: "room",
-          foreignField: "_id",
-          as: "roomDetails",
-        },
-      },
-      {
-        $unwind: {
-          path: "$roomDetails",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      // Lookup createdBy (user)
-      {
-        $lookup: {
-          from: "users",
-          localField: "createdBy",
-          foreignField: "_id",
-          as: "creator",
-        },
-      },
-      {
-        $unwind: {
-          path: "$creator",
-          preserveNullAndEmptyArrays: true,
-        },
-      },
-      // Final projection
-      {
-        $project: {
-          _id: 0,
-          fullName: 1,
-          email: 1,
-          totalRent: 1,
-          applyDiscount: 1,
-          additionaldiscount: 1,
-          discountTitle: 1,
-          roomNumber: "$roomDetails.roomNumber",
-          roomCategory: "$roomDetails.category",
-          createdByEmail: "$creator.email",
-        },
-      },
-    ]);
-
-    res.status(200).json({
-      success: true,
-      month: parsedMonth,
-      year: parsedYear,
-      count: guests.length,
-      guests,
-    });
-  } catch (error) {
-    console.error("Error fetching discounted guests:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while fetching discounted guests",
-    });
-  }
-};
-
-exports.GetAllRevenue = async (req, res) => {
-  try {
-    const result = await Guest.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$totalRent" },
-          totalReservations: { $sum: 1 },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          totalRevenue: 1,
-          totalReservations: 1,
-        },
-      },
-    ]);
-    const total = result[0]?.totalRevenue || 0;
-    const reservations = result[0]?.totalReservations || 0;
-
-    res.status(200).json({
-      success: true,
-      totalRevenue: total, // Fixed typo from totalrevene
-      totalReservations: reservations
-    });
-  } catch (err) {
-    console.error("Error getting total revenue:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get total revenue",
-    });
+    handleError(res, error, "GetYearlyRevenue");
   }
 };
 
 exports.GetWeeklyRevenue = async (req, res) => {
   try {
     const { week, year } = req.query;
-    const parsedWeek = parseInt(week);
-    const parsedYear = parseInt(year);
-
-    if (!parsedWeek || !parsedYear) {
-      return res.status(400).json({
-        success: false,
-        message: "Week and year are required in query params.",
-      });
+    if (!week || !year) {
+      return res.status(400).json({ success: false, message: "Week and year are required." });
     }
 
-    const result = await Guest.aggregate([
-      {
-        $addFields: {
-          week: { $isoWeek: "$checkInAt" },
-          year: { $isoWeekYear: "$checkInAt" },
-        },
-      },
-      {
-        $match: {
-          week: parsedWeek,
-          year: parsedYear,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$totalRent" },
-          totalReservations: { $sum: 1 }, // Changed from totalGuests for consistency
-        },
-      },
-    ]);
-
-    const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
-
+    const data = await Guest.fetchRevenueByPeriod({
+      period: 'weekly',
+      year: parseInt(year),
+      week: parseInt(week),
+    });
+    
     res.status(200).json({
       success: true,
-      week: parsedWeek,
-      year: parsedYear,
+      week: parseInt(week),
+      year: parseInt(year),
       weeklyrevenue: data,
     });
   } catch (error) {
-    console.error("Error getting weekly revenue:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch weekly revenue",
-    });
+    handleError(res, error, "GetWeeklyRevenue");
   }
 };
 
 exports.GetDailyRevenue = async (req, res) => {
   try {
     const { day, month, year } = req.query;
-
-    const parsedDay = parseInt(day);
-    const parsedMonth = parseInt(month);
-    const parsedYear = parseInt(year);
-
-    if (!parsedDay || !parsedMonth || !parsedYear) {
-      return res.status(400).json({
-        success: false,
-        message: "Day, month, and year are required in query params.",
-      });
+    if (!day || !month || !year) {
+      return res.status(400).json({ success: false, message: "Day, month, and year are required." });
     }
 
-    const result = await Guest.aggregate([
-      {
-        $addFields: {
-          day: { $dayOfMonth: "$checkInAt" },
-          month: { $month: "$checkInAt" },
-          year: { $year: "$checkInAt" },
-        },
-      },
-      {
-        $match: {
-          day: parsedDay,
-          month: parsedMonth,
-          year: parsedYear,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: "$totalRent" },
-          totalReservations: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+    const data = await Guest.fetchRevenueByPeriod({
+      period: 'daily',
+      year: parseInt(year),
+      month: parseInt(month),
+      day: parseInt(day),
+    });
 
     res.status(200).json({
       success: true,
-      day: parsedDay,
-      month: parsedMonth,
-      year: parsedYear,
-      totalRevenue: data.totalRevenue,
-      totalReservations: data.totalReservations
+      day: parseInt(day),
+      month: parseInt(month),
+      year: parseInt(year),
+      ...data,
     });
   } catch (error) {
-    console.error("Error getting daily revenue:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch daily revenue",
-    });
+    handleError(res, error, "GetDailyRevenue");
   }
 };
+
+exports.GetRevenueRoomCategories = async (req, res) => {
+  try {
+    const { month, year } = req.query;
+    if (!month || !year) {
+      return res.status(400).json({ success: false, message: "Month and year are required." });
+    }
+
+    const categories = await Guest.fetchRevenueByCategory(parseInt(year), parseInt(month));
+
+    res.status(200).json({
+      success: true,
+      month: parseInt(month),
+      year: parseInt(year),
+      categories: categories,
+    });
+  } catch (error) {
+    handleError(res, error, "GetRevenueRoomCategories");
+  }
+};
+
+exports.CheckDiscountedGuest = async (req, res) => {
+  try {
+    const { month, year } = req.query;
+    if (!month || !year) {
+      return res.status(400).json({ success: false, message: "Month and year are required." });
+    }
+
+    const guests = await Guest.fetchDiscountedGuests(parseInt(year), parseInt(month));
+
+    res.status(200).json({
+      success: true,
+      month: parseInt(month),
+      year: parseInt(year),
+      count: guests.length,
+      guests,
+    });
+  } catch (error) {
+    handleError(res, error, "CheckDiscountedGuest");
+  }
+};
+
+exports.GetAllRevenue = async (req, res) => {
+  try {
+    const data = await Guest.fetchAllTimeRevenue();
+    res.status(200).json({
+      success: true,
+      ...data,
+    });
+  } catch (error) {
+    handleError(res, error, "GetAllRevenue");
+  }
+};
+
+// exports.GetMonthlyRevenue = async (req, res) => {
+//   try {
+//     const { month, year } = req.query;
+//     const parsedMonth = parseInt(month);
+//     const parsedYear = parseInt(year);
+//     if (!parsedMonth || !parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Month and year are required in query params.",
+//       });
+//     }
+//     const result = await Guest.aggregate([
+//       {
+//         $addFields: {
+//           month: { $month: "$checkInAt" },
+//           year: { $year: "$checkInAt" },
+//         },
+//       },
+//       {
+//         $match: {
+//           month: parsedMonth,
+//           year: parsedYear,
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalReservations: { $sum: 1 },
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           totalRevenue: 1,
+//           totalReservations: 1,
+//         },
+//       },
+//     ]);
+//     const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+//     res.status(200).json({
+//       success: true,
+//       month: parsedMonth,
+//       year: parsedYear,
+//       monthlyrevenue: data,
+//     });
+//   } catch (error) {
+//     console.error("Error getting monthly revenue:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch monthly revenue",
+//     });
+//   }
+// };
+
+// exports.GetYearlyRevenue = async (req, res) => {
+//   try {
+//     const { year } = req.query;
+//     const parsedYear = parseInt(year);
+
+//     if (!parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Year is required in query params.",
+//       });
+//     }
+//     const result = await Guest.aggregate([
+//       {
+//         $addFields: {
+//           year: { $year: "$checkInAt" },
+//         },
+//       },
+//       {
+//         $match: {
+//           year: parsedYear,
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalReservations: { $sum: 1 },
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           totalRevenue: 1,
+//           totalReservations: 1,
+//         },
+//       },
+//     ]);
+//     const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+//     res.status(200).json({
+//       success: true,
+//       year: parsedYear,
+//       ...data,
+//     });
+//   } catch (error) {
+//     console.error("Error getting yearly revenue:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch yearly revenue",
+//     });
+//   }
+// };
+
+// exports.GetRevenueRoomCategories = async (req, res) => {
+//   try {
+//     const { month, year } = req.query;
+//     const parsedMonth = parseInt(month);
+//     const parsedYear = parseInt(year);
+//     if (!parsedMonth || !parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Month and year are required in query params.",
+//       });
+//     }
+//     const result = await Guest.aggregate([
+//       {
+//         $lookup: {
+//           from: "rooms",
+//           localField: "room",
+//           foreignField: "_id",
+//           as: "roomData",
+//         },
+//       },
+//       {
+//         $unwind: "$roomData",
+//       },
+//       {
+//         $addFields: {
+//           month: { $month: "$checkInAt" },
+//           year: { $year: "$checkInAt" },
+//         },
+//       },
+//       {
+//         $match: {
+//           month: parsedMonth,
+//           year: parsedYear,
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: "$roomData.category",
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalGuests: { $sum: 1 },
+//         },
+//       },
+//       {
+//         $sort: { totalRevenue: -1 },
+//       },
+//     ]);
+//     res.status(200).json({
+//       success: true,
+//       month: parsedMonth,
+//       year: parsedYear,
+//       categories: result,
+//     });
+//   } catch (error) {
+//     console.error("Error in category-wise revenue:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to calculate revenue by category",
+//     });
+//   }
+// };
+
+// exports.CheckDiscountedGuest = async (req, res) => {
+//   try {
+//     const { month, year } = req.query;
+
+//     const parsedMonth = parseInt(month);
+//     const parsedYear = parseInt(year);
+//     if (!parsedMonth || !parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Month and year are required in query params.",
+//       });
+//     }
+
+//     const guests = await Guest.aggregate([
+//       // Add month and year fields
+//       {
+//         $addFields: {
+//           month: { $month: "$checkInAt" },
+//           year: { $year: "$checkInAt" },
+//         },
+//       },
+//       // Filter by given month + year and guests with discount
+//       {
+//         $match: {
+//           month: parsedMonth,
+//           year: parsedYear,
+//           applyDiscount: true,
+//         },
+//       },
+//       // Lookup room
+//       {
+//         $lookup: {
+//           from: "rooms",
+//           localField: "room",
+//           foreignField: "_id",
+//           as: "roomDetails",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$roomDetails",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       // Lookup createdBy (user)
+//       {
+//         $lookup: {
+//           from: "users",
+//           localField: "createdBy",
+//           foreignField: "_id",
+//           as: "creator",
+//         },
+//       },
+//       {
+//         $unwind: {
+//           path: "$creator",
+//           preserveNullAndEmptyArrays: true,
+//         },
+//       },
+//       // Final projection
+//       {
+//         $project: {
+//           _id: 0,
+//           fullName: 1,
+//           email: 1,
+//           totalRent: 1,
+//           applyDiscount: 1,
+//           additionaldiscount: 1,
+//           discountTitle: 1,
+//           roomNumber: "$roomDetails.roomNumber",
+//           roomCategory: "$roomDetails.category",
+//           createdByEmail: "$creator.email",
+//         },
+//       },
+//     ]);
+
+//     res.status(200).json({
+//       success: true,
+//       month: parsedMonth,
+//       year: parsedYear,
+//       count: guests.length,
+//       guests,
+//     });
+//   } catch (error) {
+//     console.error("Error fetching discounted guests:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Server error while fetching discounted guests",
+//     });
+//   }
+// };
+
+// exports.GetAllRevenue = async (req, res) => {
+//   try {
+//     const result = await Guest.aggregate([
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalReservations: { $sum: 1 },
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           totalRevenue: 1,
+//           totalReservations: 1,
+//         },
+//       },
+//     ]);
+//     const total = result[0]?.totalRevenue || 0;
+//     const reservations = result[0]?.totalReservations || 0;
+
+//     res.status(200).json({
+//       success: true,
+//       totalRevenue: total, // Fixed typo from totalrevene
+//       totalReservations: reservations
+//     });
+//   } catch (err) {
+//     console.error("Error getting total revenue:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to get total revenue",
+//     });
+//   }
+// };
+
+// exports.GetWeeklyRevenue = async (req, res) => {
+//   try {
+//     const { week, year } = req.query;
+//     const parsedWeek = parseInt(week);
+//     const parsedYear = parseInt(year);
+
+//     if (!parsedWeek || !parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Week and year are required in query params.",
+//       });
+//     }
+
+//     const result = await Guest.aggregate([
+//       {
+//         $addFields: {
+//           week: { $isoWeek: "$checkInAt" },
+//           year: { $isoWeekYear: "$checkInAt" },
+//         },
+//       },
+//       {
+//         $match: {
+//           week: parsedWeek,
+//           year: parsedYear,
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalReservations: { $sum: 1 }, // Changed from totalGuests for consistency
+//         },
+//       },
+//     ]);
+
+//     const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+
+//     res.status(200).json({
+//       success: true,
+//       week: parsedWeek,
+//       year: parsedYear,
+//       weeklyrevenue: data,
+//     });
+//   } catch (error) {
+//     console.error("Error getting weekly revenue:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch weekly revenue",
+//     });
+//   }
+// };
+
+// exports.GetDailyRevenue = async (req, res) => {
+//   try {
+//     const { day, month, year } = req.query;
+
+//     const parsedDay = parseInt(day);
+//     const parsedMonth = parseInt(month);
+//     const parsedYear = parseInt(year);
+
+//     if (!parsedDay || !parsedMonth || !parsedYear) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Day, month, and year are required in query params.",
+//       });
+//     }
+
+//     const result = await Guest.aggregate([
+//       {
+//         $addFields: {
+//           day: { $dayOfMonth: "$checkInAt" },
+//           month: { $month: "$checkInAt" },
+//           year: { $year: "$checkInAt" },
+//         },
+//       },
+//       {
+//         $match: {
+//           day: parsedDay,
+//           month: parsedMonth,
+//           year: parsedYear,
+//         },
+//       },
+//       {
+//         $group: {
+//           _id: null,
+//           totalRevenue: { $sum: "$totalRent" },
+//           totalReservations: { $sum: 1 },
+//         },
+//       },
+//     ]);
+
+//     const data = result[0] || { totalRevenue: 0, totalReservations: 0 };
+
+//     res.status(200).json({
+//       success: true,
+//       day: parsedDay,
+//       month: parsedMonth,
+//       year: parsedYear,
+//       totalRevenue: data.totalRevenue,
+//       totalReservations: data.totalReservations
+//     });
+//   } catch (error) {
+//     console.error("Error getting daily revenue:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch daily revenue",
+//     });
+//   }
+// };
