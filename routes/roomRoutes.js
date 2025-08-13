@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const authenticate = require("../middleware/authMiddleware");
-const authorie = require("../middleware/adminMiddleware");
+// const authorie = require("../middleware/adminMiddleware");
 const {
   createRoom,
   getRooms,
@@ -17,7 +17,7 @@ router.get("/get-available-rooms", getAvailableRooms);
 
 // Protect all room routes
 // Only allow access to admin users
-router.use(authorie("admin"));
+// router.use(authorie("admin"));
 
 router.post("/create-room", createRoom);
 router.get("/get-all-rooms", getRooms);

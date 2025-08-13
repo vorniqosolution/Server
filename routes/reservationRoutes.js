@@ -8,10 +8,10 @@ const {
   GetAllReservedRoomWithDate,
   GetAllOccupiedRoomsWithDate,
 } = require("../controller/reservationcontroller");
-const authenticate = require("../middleware/authMiddleware");
+// const authenticate = require("../middleware/authMiddleware");
 
 // Protect all guest routes
-router.use(authenticate);
+// router.use(authenticate);
 
 router.post("/create-reservation", createReservation);
 router.get("/get-reservations", getReservations);
