@@ -7,170 +7,6 @@ const Setting = require("../model/Setting");
 const mongoose = require("mongoose");
 const Reservation = require ("../model/reservationmodel")
 
-// exports.createGuest = async (req, res) => {
-//   try {
-//     let {
-//       fullName,
-//       address,
-//       phone,
-//       cnic,
-//       email,
-//       roomNumber,
-//       stayDuration,
-//       paymentMethod,
-//       applyDiscount = false,
-//       additionaldiscount = 0,
-//     } = req.body;
-
-//     console.log("additionaldiscount", additionaldiscount);
-
-//     // 1. Lookup room
-//     const room = await Room.findOne({ roomNumber });
-//     if (!room)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Room not found" });
-//     if (room.status !== "available")
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Room not available" });
-
-//     // 2. Calculate rent
-//     let baseRent = room.rate * stayDuration;
-//     baseRent -= additionaldiscount; // ✅ subtract additional discount first
-
-//     let discountAmount = 0;
-//     let discountTitle = null;
-//     let taxAmount = 0; // ✅ initialized before
-//     let totalRent = baseRent;
-
-//     // Get tax settings
-//     const settings = await Setting.findById("global_settings");
-//     const taxRate = settings ? settings.taxRate : 0; // ✅ get tax rate
-//     console.log("taxRate", taxRate);
-
-//     // Apply percentage discount if applicable
-//     if (applyDiscount) {
-//       const today = new Date();
-//       const validDiscount = await Discount.findOne({
-//         startDate: { $lte: today },
-//         endDate: { $gte: today },
-//       });
-
-//       if (!validDiscount)
-//         return res
-//           .status(400)
-//           .json({ success: false, message: "No valid discount available" });
-
-//       discountAmount = baseRent * (validDiscount.percentage / 100); // ✅ percentage discount on baseRent
-//       totalRent = baseRent - discountAmount; // ✅ apply discount
-//       discountTitle = validDiscount.title;
-//     }
-
-//     // Calculate tax and final total rent
-//     taxAmount = (totalRent * taxRate) / 100; // ✅ tax on discounted amount
-//     totalRent += taxAmount; // ✅ final amount with tax
-
-//     // 3. Create guest record
-//     const guest = await Guest.create({
-//       fullName,
-//       address,
-//       phone,
-//       cnic,
-//       email,
-//       room: room._id,
-//       stayDuration,
-//       paymentMethod,
-//       applyDiscount,
-//       discountTitle,
-//       totalRent,
-//       gst: taxAmount, // ✅ storing GST
-//       additionaldiscount: additionaldiscount, // ✅ storing additional discount
-//       createdBy: req.user.userId,
-//     });
-
-//     // 4. Mark room occupied
-//     room.status = "occupied";
-//     await room.save();
-
-//     // 5. Invoice Calculation (fully synced with guest logic) ✅
-//     let invoiceBaseRent = room.rate * stayDuration; // ✅
-//     invoiceBaseRent -= additionaldiscount; // ✅
-
-//     let invoiceDiscountAmount = 0;
-//     let invoiceTaxAmount = 0;
-//     let invoiceTotal = invoiceBaseRent;
-
-//     if (applyDiscount) {
-//       invoiceDiscountAmount = invoiceBaseRent * (discountAmount / baseRent); // ✅ same ratio as guest logic
-//       invoiceTotal = invoiceBaseRent - invoiceDiscountAmount; // ✅
-//     }
-
-//     invoiceTaxAmount = (invoiceTotal * taxRate) / 100; // ✅
-//     invoiceTotal += invoiceTaxAmount; // ✅
-
-//     const invoice = await Invoice.create({
-//       invoiceNumber: `HSQ-${Date.now()}`,
-//       guest: guest._id,
-//       items: [
-//         {
-//           description: `Room Rent (${room.category} - #${room.roomNumber})`,
-//           quantity: stayDuration,
-//           unitPrice: room.rate,
-//           total: invoiceBaseRent, // ✅ already reduced by additional discount
-//         },
-//       ],
-//       subtotal: invoiceBaseRent, // ✅ after additional discount
-//       discountAmount: invoiceDiscountAmount, // ✅ calculated same as above
-//       taxRate,
-//       taxAmount: invoiceTaxAmount,
-//       grandTotal: invoiceTotal,
-//       additionaldiscount,
-//       dueDate: guest.checkOutAt,
-//       createdBy: req.user.userId,
-//     });
-
-//     console.log("invoice", invoice);
-
-//     // =================================================================
-
-//     // 6. Notify Inventory (if applicable)
-//     // ... (your existing axios call)
-//     try {
-//       await axios.post(
-//         `${process.env.API_BASE_URL}/api/inventory/checkin`,
-//         { roomId: room._id, guestId: guest._id },
-//         {
-//           headers: {
-//             Cookie: req.headers.cookie,
-//           },
-//         }
-//       );
-//       console.log(
-//         "Calling Inventory at:",
-//         `${process.env.API_BASE_URL}/api/inventory/checkin`
-//       );
-//     } catch (invErr) {
-//       console.error("Inventory check-in failed:", invErr.message);
-//       // Continue without blocking check-in
-//     }
-
-//     // 7. Return guest AND their new invoice data
-//     return res.status(201).json({
-//       success: true,
-//       message: "Guest checked in successfully",
-//       data: {
-//         guest,
-//         invoice, // <-- SEND INVOICE TO FRONTEND
-//       },
-//     });
-//   } catch (err) {
-//     console.error("createGuest Error:", err);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server error", error: err.message });
-//   }
-// };
 
 exports.getGuests = async (req, res) => {
   try {
@@ -441,17 +277,24 @@ exports.createGuest = async (req, res) => {
       }
     }
 
-    // 4) Pricing / discount / tax
+    // 4) Pricing / discount / tax  ✅ UPDATED (correct order + shared with invoice)
     const settings = await Setting.findById("global_settings").lean();
-    const taxRate = settings?.taxRate ?? 0;
+    const taxRate = Number(settings?.taxRate ?? 0); // 0 in your case
 
     const nights = Math.max(1, Number(stayDuration) || 1);
-    const addDisc = Math.max(0, Number(additionaldiscount) || 0);
     const rate = Number(room.rate) || 0;
 
-    let baseRent = Math.max(0, rate * nights - addDisc);
+    // Full room total BEFORE any discounts
+    const roomTotal = rate * nights;
 
-    let discountAmount = 0;
+    // Additional discount (fixed). Clamp to roomTotal just in case.
+    const additionalDiscountAmount = Math.min(
+      Math.max(0, Number(additionaldiscount) || 0),
+      roomTotal
+    );
+
+    // Standard (% ) discount on FULL roomTotal (not after additional)
+    let stdPct = 0;
     let discountTitle = null;
     if (applyDiscount) {
       const today = new Date();
@@ -459,20 +302,28 @@ exports.createGuest = async (req, res) => {
         startDate: { $lte: today },
         endDate: { $gte: today },
       });
+
       if (!validDiscount) {
         return res
           .status(400)
           .json({ success: false, message: "No valid discount available" });
       }
-      discountAmount = baseRent * (validDiscount.percentage / 100);
+
+      stdPct = Number(validDiscount.percentage) || 0; // 25 in your example
       discountTitle = validDiscount.title;
     }
 
-    const subtotal = baseRent - discountAmount;
-    const gstAmount = (subtotal * taxRate) / 100;
-    const totalRent = subtotal + gstAmount;
+    const standardDiscountAmount = Math.round(roomTotal * (stdPct / 100));
 
-    // 5) Create guest
+    const subtotalBeforeTax = Math.max(
+      0,
+      roomTotal - standardDiscountAmount - additionalDiscountAmount
+    );
+
+    const gstAmount = Math.round((subtotalBeforeTax * taxRate) / 100); // 0 if taxRate=0
+    const totalRent = subtotalBeforeTax + gstAmount;
+
+    // 5) Create guest (values aligned with invoice)
     const guest = await Guest.create({
       fullName,
       address,
@@ -486,7 +337,7 @@ exports.createGuest = async (req, res) => {
       discountTitle,
       totalRent,
       gst: gstAmount,
-      additionaldiscount: addDisc,
+      additionaldiscount: additionalDiscountAmount,
       createdBy: req.user.userId,
     });
 
@@ -501,46 +352,31 @@ exports.createGuest = async (req, res) => {
       await reservation.save();
     }
 
-    // 5. Invoice Calculation (fully synced with guest logic) ✅
-    let invoiceBaseRent = room.rate * stayDuration; // ✅
-    invoiceBaseRent -= additionaldiscount; // ✅
-
-    let invoiceDiscountAmount = 0;
-    let invoiceTaxAmount = 0;
-    let invoiceTotal = invoiceBaseRent;
-
-    if (applyDiscount) {
-      invoiceDiscountAmount = invoiceBaseRent * (discountAmount / baseRent); // ✅ same ratio as guest logic
-      invoiceTotal = invoiceBaseRent - invoiceDiscountAmount; // ✅
-    }
-
-    invoiceTaxAmount = (invoiceTotal * taxRate) / 100; // ✅
-    invoiceTotal += invoiceTaxAmount; // ✅
-
+    // 8) Invoice Calculation  ✅ UPDATED to exactly mirror the guest math
     const invoice = await Invoice.create({
       invoiceNumber: `HSQ-${Date.now()}`,
       guest: guest._id,
       items: [
         {
           description: `Room Rent (${room.category} - #${room.roomNumber})`,
-          quantity: stayDuration,
-          unitPrice: room.rate,
-          total: invoiceBaseRent, // ✅ already reduced by additional discount
+          quantity: nights,
+          unitPrice: rate,
+          total: roomTotal, // line total BEFORE discounts
         },
       ],
-      subtotal: invoiceBaseRent, // ✅ after additional discount
-      discountAmount: invoiceDiscountAmount, // ✅ calculated same as above
+      subtotal: roomTotal,                    // before any discounts
+      discountAmount: standardDiscountAmount, // standard % discount
+      additionaldiscount: additionalDiscountAmount, // fixed discount
       taxRate,
-      taxAmount: invoiceTaxAmount,
-      grandTotal: invoiceTotal,
-      additionaldiscount,
-      dueDate: guest.checkOutAt,
+      taxAmount: gstAmount,
+      grandTotal: totalRent,
+      dueDate: guest.checkOutAt, // keep as-is if your model provides it
       createdBy: req.user.userId,
     });
 
     console.log("invoice", invoice);
 
-    // 8) ALWAYS notify Inventory (both simple and reservation check-in)
+    // 9) ALWAYS notify Inventory (both simple and reservation check-in)
     try {
       const authHeaders = {};
       if (req.headers.cookie) authHeaders.Cookie = req.headers.cookie;
@@ -574,4 +410,3 @@ exports.createGuest = async (req, res) => {
       .json({ success: false, message: "Server error", error: err.message });
   }
 };
-

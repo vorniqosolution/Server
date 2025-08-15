@@ -23,7 +23,7 @@ const sendInvoiceEmail = async (filePath, invoiceNumber, guestName, roomNumber) 
 
   const mailOptions = {
     from: `"HSQ Towers" <${process.env.EMAIL_USER}>`, // <-- Updated sender name
-    to: "hsqtower@gmail.com",
+    to: process.env.OFFICE_EMAIL,
     subject: `Invoice Archived: ${invoiceNumber} (Guest: ${guestName}, Room: ${roomNumber})`, // <-- Updated subject
     text: `An invoice has been generated and archived for guest: ${guestName} in Room ${roomNumber}.\n\nInvoice Number: ${invoiceNumber}`, // <-- Updated body
     attachments: [
