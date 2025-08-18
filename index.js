@@ -34,6 +34,8 @@ app.use(express.json());
 
 // Connect to MongoDB
 connectDB();
+
+// CRM ROUTES (Admin, receptionist, accountant)
 app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/guests", guestRoutes);
