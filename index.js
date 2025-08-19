@@ -18,10 +18,15 @@ const reservationRoutes = require("./routes/reservationRoutes");
 dotenv.config();
 const app = express();
 
-const allowed = ["http://localhost:3000", "http://localhost:8080"];
+const allowed = (process.env.ALLOWED_ORIGIN || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
     origin: (origin, cb) => {
+      // allow server-to-server (no origin) and any whitelisted origin
       if (!origin || allowed.includes(origin)) return cb(null, true);
       cb(new Error("Not allowed by CORS"));
     },
@@ -31,6 +36,12 @@ app.use(
 
 app.use(cookieParser());
 app.use(express.json());
+
+
+// Simple health & version routes (great for Docker/ALB checks)
+app.get("/health", (req, res) => res.json({ ok: true, ts: Date.now() }));
+app.get("/version", (req, res) => res.json({ env: process.env.NODE_ENV || "dev" }));
+
 
 // Connect to MongoDB
 connectDB();
@@ -48,4 +59,4 @@ app.use("/api/reservation", reservationRoutes);
 app.use("/api/tax", SettingRoutes);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT,  "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
