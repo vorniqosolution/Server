@@ -37,11 +37,11 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 
-
 // Simple health & version routes (great for Docker/ALB checks)
-app.get("/health", (req, res) => res.json({ ok: true, ts: Date.now() }));
-app.get("/version", (req, res) => res.json({ env: process.env.NODE_ENV || "dev" }));
-
+// app.get("/health", (req, res) => res.json({ ok: true, ts: Date.now() }));
+// app.get("/version", (req, res) =>
+//   res.json({ env: process.env.NODE_ENV || "dev" })
+// );
 
 // Connect to MongoDB
 connectDB();
@@ -57,6 +57,12 @@ app.use("/api/invoice", invoice);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reservation", reservationRoutes);
 app.use("/api/tax", SettingRoutes);
+// testing purpose
+app.get("/test", (req, res) => {
+  return res.json({ message: "test api" });
+});
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT,  "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () =>
+  console.log(`Server running on port ${PORT}`)
+);
