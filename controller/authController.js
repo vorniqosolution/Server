@@ -28,6 +28,7 @@ exports.login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production", // false in dev
       sameSite: "Lax", // allows cross-site POSTs
+      domain: process.env.DOMAIN_NAME || undefined,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 

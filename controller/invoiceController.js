@@ -4,12 +4,17 @@ const Guest = require("../model/guest");
 const Room = require("../model/room");
 const nodemailer = require("nodemailer");
 const puppeteer = require("puppeteer");
+// const pdf = require("html-pdf"); //ADD NEW
 const path = require("path");
 const fs = require("fs");
 const ejs = require("ejs");
 
-
-const sendInvoiceEmail = async (filePath, invoiceNumber, guestName, roomNumber) => {
+const sendInvoiceEmail = async (
+  filePath,
+  invoiceNumber,
+  guestName,
+  roomNumber
+) => {
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -19,7 +24,10 @@ const sendInvoiceEmail = async (filePath, invoiceNumber, guestName, roomNumber) 
   });
 
   // <-- CHANGE: Create a more descriptive, human-friendly filename -->
-  const friendlyFilename = `Invoice - ${guestName.replace(/ /g, '_')} - Room_${roomNumber} - ${invoiceNumber}.pdf`;
+  const friendlyFilename = `Invoice - ${guestName.replace(
+    / /g,
+    "_"
+  )} - Room_${roomNumber} - ${invoiceNumber}.pdf`;
 
   const mailOptions = {
     from: `"HSQ Towers" <${process.env.EMAIL_USER}>`, // <-- Updated sender name
@@ -37,21 +45,44 @@ const sendInvoiceEmail = async (filePath, invoiceNumber, guestName, roomNumber) 
   await transporter.sendMail(mailOptions);
 };
 
+// help of html-pdf library
 const generatePdfFromHtml = async (htmlContent) => {
-    const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-    const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-    const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
-    await browser.close();
-    return pdfBuffer;
+  const browser = await puppeteer.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true,
+    executablePath:
+      process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
+  });
+  const page = await browser.newPage();
+  await page.setContent(htmlContent, { waitUntil: "networkidle0" });
+  const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+  await browser.close();
+  return pdfBuffer;
 };
+
+// generate PDF from HTML using html-pdf
+// GANERATE PDF WITH THE HELP OF HTML-PDF
+// const generatePdfFromHtml = async (htmlContent) => {
+//   return new Promise((resolve, reject) => {
+//     const options = {
+//       format: "A4",
+//       orientation: "portrait",
+//       border: "10mm",
+//     };
+
+//     pdf.create(htmlContent, options).toBuffer((err, buffer) => {
+//       if (err) return reject(err);
+//       resolve(buffer);
+//     });
+//   });
+// };
 
 exports.getInvoiceById = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id)
       .populate({
         path: "guest",
-        populate: { path: 'room', model: 'Room' } // <-- Deep populate is better here too
+        populate: { path: "room", model: "Room" }, // <-- Deep populate is better here too
       })
       .populate("createdBy", "name");
 
@@ -69,29 +100,36 @@ exports.getInvoiceById = async (req, res) => {
 exports.sendInvoiceByEmail = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // The deep populate is essential for getting the room number
     const invoice = await Invoice.findById(id).populate({
-      path: 'guest',
+      path: "guest",
       populate: {
-        path: 'room',
-        model: 'Room'
-      }
+        path: "room",
+        model: "Room",
+      },
     });
 
     // <-- CHANGE: Added a more robust check for guest and room data -->
     if (!invoice || !invoice.guest || !invoice.guest.room) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Invoice, associated guest, or room data not found." });
+      return res.status(404).json({
+        success: false,
+        message: "Invoice, associated guest, or room data not found.",
+      });
     }
 
     // 1. Render the EJS template to create the HTML content
-    const templatePath = path.resolve(__dirname, '..', 'views', 'invoice-template.ejs');
+    const templatePath = path.resolve(
+      __dirname,
+      "..",
+      "views",
+      "invoice-template.ejs"
+    );
     const htmlContent = await ejs.renderFile(templatePath, {
-        invoice: invoice,
-        guest: invoice.guest
+      invoice: invoice,
+      guest: invoice.guest,
     });
+    // console.log("htmlcontent", htmlContent);
 
     // 2. Generate PDF from HTML
     const pdfBuffer = await generatePdfFromHtml(htmlContent);
@@ -106,17 +144,18 @@ exports.sendInvoiceByEmail = async (req, res) => {
 
     // 5. Save the PDF to the disk
     fs.writeFileSync(savePath, pdfBuffer);
-    
+
     // 6. Update the database with the server path
     invoice.pdfPath = `/uploads/invoices/${serverFilename}`;
     await invoice.save();
 
     // <-- CHANGE: Pass the guest name and room number to the email helper -->
+    // THIS CONTROLLER WRITE ON TOP
     await sendInvoiceEmail(
-        savePath, 
-        invoice.invoiceNumber,
-        invoice.guest.fullName,
-        invoice.guest.room.roomNumber
+      savePath,
+      invoice.invoiceNumber,
+      invoice.guest.fullName,
+      invoice.guest.room.roomNumber
     );
 
     res.status(200).json({
@@ -126,13 +165,11 @@ exports.sendInvoiceByEmail = async (req, res) => {
     });
   } catch (err) {
     console.error("sendInvoiceByEmail Error:", err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to process and send invoice",
-        error: err.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to process and send invoice",
+      error: err.message,
+    });
   }
 };
 
@@ -142,53 +179,62 @@ exports.searchInvoices = async (req, res) => {
 
     let guestIds = [];
     if (guestName || roomNumber) {
-        const guestQuery = {};
-        if (guestName) {
-            guestQuery.fullName = new RegExp(guestName, 'i');
-        }
+      const guestQuery = {};
+      if (guestName) {
+        guestQuery.fullName = new RegExp(guestName, "i");
+      }
 
-        if (roomNumber) {
-            // <-- BUG FIX: Changed 'room.findOne' to 'Room.findOne' (capital R)
-            const room = await Room.findOne({ roomNumber: roomNumber });
-            if (room) {
-                guestQuery.room = room._id;
-            } else {
-                return res.status(200).json({ success: true, count: 0, data: [] });
-            }
+      if (roomNumber) {
+        // <-- BUG FIX: Changed 'room.findOne' to 'Room.findOne' (capital R)
+        const room = await Room.findOne({ roomNumber: roomNumber });
+        if (room) {
+          guestQuery.room = room._id;
+        } else {
+          return res.status(200).json({ success: true, count: 0, data: [] });
         }
-        const matchingGuests = await Guest.find(guestQuery).select('_id');
-        guestIds = matchingGuests.map(guest => guest._id);
+      }
+      const matchingGuests = await Guest.find(guestQuery).select("_id");
+      guestIds = matchingGuests.map((guest) => guest._id);
     }
-    
+
     const invoiceQuery = {};
     if (guestIds.length > 0) {
       invoiceQuery.guest = { $in: guestIds };
     }
     if (invoiceNumber) {
-      invoiceQuery.invoiceNumber = new RegExp(invoiceNumber, 'i');
+      invoiceQuery.invoiceNumber = new RegExp(invoiceNumber, "i");
     }
 
     if (Object.keys(invoiceQuery).length === 0 && !guestName && !roomNumber) {
-        return res.status(400).json({ success: false, message: "Please provide at least one search term (guestName, roomNumber, or invoiceNumber)." });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please provide at least one search term (guestName, roomNumber, or invoiceNumber).",
+      });
     }
-    
+
     if ((guestName || roomNumber) && guestIds.length === 0) {
-        return res.status(200).json({ success: true, count: 0, data: [] });
+      return res.status(200).json({ success: true, count: 0, data: [] });
     }
 
     const invoices = await Invoice.find(invoiceQuery)
       .populate({
-          path: 'guest',
-          populate: { path: 'room', model: 'Room' }
+        path: "guest",
+        populate: { path: "room", model: "Room" },
       })
       .sort({ createdAt: -1 })
       .limit(50);
 
-    res.status(200).json({ success: true, count: invoices.length, data: invoices });
-
+    res
+      .status(200)
+      .json({ success: true, count: invoices.length, data: invoices });
   } catch (err) {
     console.error("searchInvoices Error:", err);
-    res.status(500).json({ success: false, message: "Server error during search", error: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Server error during search",
+      error: err.message,
+    });
   }
 };
 
@@ -200,9 +246,9 @@ exports.getAllInvoices = async (req, res) => {
 
     const invoices = await Invoice.find()
       .populate({
-          path: 'guest',
-          select: 'fullName room',
-          populate: { path: 'room', model: 'Room', select: 'roomNumber' }
+        path: "guest",
+        select: "fullName room",
+        populate: { path: "room", model: "Room", select: "roomNumber" },
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -218,30 +264,42 @@ exports.getAllInvoices = async (req, res) => {
       data: invoices,
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
 
 exports.updateInvoiceStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    if (!status || !['pending', 'paid', 'cancelled'].includes(status)) {
-        return res.status(400).json({ success: false, message: "Invalid status provided." });
+    if (!status || !["pending", "paid", "cancelled"].includes(status)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid status provided." });
     }
 
     const invoice = await Invoice.findByIdAndUpdate(
-        req.params.id,
-        { status: status },
-        { new: true, runValidators: true } // 'new: true' returns the updated document
+      req.params.id,
+      { status: status },
+      { new: true, runValidators: true } // 'new: true' returns the updated document
     );
 
     if (!invoice) {
-      return res.status(404).json({ success: false, message: "Invoice not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Invoice not found" });
     }
 
-    res.status(200).json({ success: true, message: `Invoice status updated to ${status}`, data: invoice });
+    res.status(200).json({
+      success: true,
+      message: `Invoice status updated to ${status}`,
+      data: invoice,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
 
@@ -250,47 +308,64 @@ exports.deleteInvoice = async (req, res) => {
     const invoice = await Invoice.findByIdAndDelete(req.params.id);
 
     if (!invoice) {
-      return res.status(404).json({ success: false, message: "Invoice not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Invoice not found" });
     }
 
     // Optional: Delete the associated PDF file from the server
     if (invoice.pdfPath) {
-        const fullPath = path.join(__dirname, '..', invoice.pdfPath);
-        if (fs.existsSync(fullPath)) {
-            fs.unlinkSync(fullPath);
-        }
+      const fullPath = path.join(__dirname, "..", invoice.pdfPath);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
     }
 
-    res.status(200).json({ success: true, message: "Invoice and associated PDF deleted successfully." });
+    res.status(200).json({
+      success: true,
+      message: "Invoice and associated PDF deleted successfully.",
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
 
 exports.downloadInvoicePdf = async (req, res) => {
-    try {
-        const invoice = await Invoice.findById(req.params.id).populate({
-            path: 'guest',
-            populate: { path: 'room', model: 'Room' }
-        });
+  try {
+    const invoice = await Invoice.findById(req.params.id).populate({
+      path: "guest",
+      populate: { path: "room", model: "Room" },
+    });
 
-        if (!invoice || !invoice.pdfPath) {
-            return res.status(404).json({ success: false, message: "Invoice or its PDF file not found." });
-        }
-
-        const fullPath = path.join(__dirname, '..', invoice.pdfPath);
-        
-        if (!fs.existsSync(fullPath)) {
-             return res.status(404).json({ success: false, message: "PDF file is missing from the server." });
-        }
-        
-        // Create the human-friendly filename for download
-        const friendlyFilename = `Invoice - ${invoice.guest.fullName.replace(/ /g, '_')} - Room_${invoice.guest.room.roomNumber} - ${invoice.invoiceNumber}.pdf`;
-
-        // Use res.download() to send the file to the client
-        res.download(fullPath, friendlyFilename);
-
-    } catch (err) {
-         res.status(500).json({ success: false, message: "Server error", error: err.message });
+    if (!invoice || !invoice.pdfPath) {
+      return res.status(404).json({
+        success: false,
+        message: "Invoice or its PDF file not found.",
+      });
     }
-}
+
+    const fullPath = path.join(__dirname, "..", invoice.pdfPath);
+
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({
+        success: false,
+        message: "PDF file is missing from the server.",
+      });
+    }
+
+    // Create the human-friendly filename for download
+    const friendlyFilename = `Invoice - ${invoice.guest.fullName.replace(
+      / /g,
+      "_"
+    )} - Room_${invoice.guest.room.roomNumber} - ${invoice.invoiceNumber}.pdf`;
+
+    // Use res.download() to send the file to the client
+    res.download(fullPath, friendlyFilename);
+  } catch (err) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
+  }
+};
