@@ -252,6 +252,10 @@ exports.GetAllReservedRoomWithDate = async (req, res) => {
     ];
 
     const result = await Reservation.aggregate(pipeline);
+    console.log("Result", result);
+    if (result.length === 0) {
+      return res.json({ message: "No reservation" });
+    }
 
     res.json({ success: true, data: result });
   } catch (error) {
