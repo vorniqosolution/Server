@@ -5,8 +5,7 @@ const Invoice = require("../model/invoice");
 const axios = require("axios");
 const Setting = require("../model/Setting");
 const mongoose = require("mongoose");
-const Reservation = require ("../model/reservationmodel")
-
+const Reservation = require("../model/reservationmodel");
 
 exports.getGuests = async (req, res) => {
   try {
@@ -120,11 +119,22 @@ exports.checkoutGuest = async (req, res) => {
 
 exports.deleteGuest = async (req, res) => {
   try {
-    const guest = await Guest.findByIdAndDelete(req.params.id);
+    const guest = await Guest.findById(req.params.id);
+
     if (!guest) {
       return res.status(404).json({ message: "Guest not found" });
     }
-    return res.json({ message: "Guest deleted successfully" });
+
+    const room = await Room.findById(guest.room);
+
+    if (room) {
+      await Room.findByIdAndUpdate(room._id, { status: "available" });
+    }
+    await Guest.findByIdAndDelete(req.params.id);
+
+    return res.json({
+      message: "Guest deleted successfully, room status updated",
+    });
   } catch (err) {
     console.error("deleteGuest Error:", err);
     return res
@@ -246,12 +256,16 @@ exports.createGuest = async (req, res) => {
     // 1) Find room FIRST
     const room = await Room.findOne({ roomNumber });
     if (!room) {
-      return res.status(404).json({ success: false, message: "Room not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Room not found" });
     }
 
     // 2) Block only occupied
     if (room.status === "occupied") {
-      return res.status(400).json({ success: false, message: "Room already occupied" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Room already occupied" });
     }
 
     // 3) If reserved, require a matching reservation
@@ -271,9 +285,10 @@ exports.createGuest = async (req, res) => {
       });
 
       if (!reservation) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid reservation for this room" });
+        return res.status(400).json({
+          success: false,
+          message: "Invalid reservation for this room",
+        });
       }
     }
 
@@ -364,7 +379,7 @@ exports.createGuest = async (req, res) => {
           total: roomTotal, // line total BEFORE discounts
         },
       ],
-      subtotal: roomTotal,                    // before any discounts
+      subtotal: roomTotal, // before any discounts
       discountAmount: standardDiscountAmount, // standard % discount
       additionaldiscount: additionalDiscountAmount, // fixed discount
       taxRate,
@@ -380,11 +395,16 @@ exports.createGuest = async (req, res) => {
     try {
       const authHeaders = {};
       if (req.headers.cookie) authHeaders.Cookie = req.headers.cookie;
-      if (req.headers.authorization) authHeaders.Authorization = req.headers.authorization;
+      if (req.headers.authorization)
+        authHeaders.Authorization = req.headers.authorization;
 
       await axios.post(
         `${process.env.API_BASE_URL}/api/inventory/checkin`,
-        { roomId: room._id, guestId: guest._id, source: reservation ? "reservation" : "walkin" },
+        {
+          roomId: room._id,
+          guestId: guest._id,
+          source: reservation ? "reservation" : "walkin",
+        },
         { headers: authHeaders }
       );
 
@@ -394,7 +414,11 @@ exports.createGuest = async (req, res) => {
         source: reservation ? "reservation" : "walkin",
       });
     } catch (invErr) {
-      console.error("Inventory check-in failed:", invErr?.response?.status, invErr?.message);
+      console.error(
+        "Inventory check-in failed:",
+        invErr?.response?.status,
+        invErr?.message
+      );
       // do not block the guest creation if inventory call fails
     }
 
