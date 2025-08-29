@@ -1,19 +1,11 @@
-
 const Room = require("../model/room");
 
 const Reservation = require("../model/reservationmodel");
 
 exports.createRoom = async (req, res) => {
   try {
-    const {
-      roomNumber,
-      bedType,
-      category,
-      view,
-      rate,
-      owner,
-      status
-    } = req.body;
+    const { roomNumber, bedType, category, view, rate, owner, status } =
+      req.body;
 
     // Prevent duplicate room numbers
     if (await Room.findOne({ roomNumber })) {
@@ -34,7 +26,7 @@ exports.createRoom = async (req, res) => {
 exports.getRooms = async (req, res) => {
   try {
     // Optionally sort by view and roomNumber for grouped dropdowns
-    const rooms = await Room.find().sort({ view: 1, roomNumber: 1 });
+    const rooms = await Room.find().sort({ roomNumber: 1 });
     res.status(200).json({ rooms });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
@@ -48,28 +40,31 @@ exports.getAvailablePresidentialRooms = async (req, res, next) => {
     // 2. Currently available (not booked, occupied, or under maintenance)
     const availablePresidentialRooms = await Room.find({
       category: "Presidential",
-      status: "available"
+      status: "available",
     })
-    .select('roomNumber rate bedType view') // Select only the fields we need
-    .sort({ roomNumber: 'asc' }); // Sort by room number
+      .select("roomNumber rate bedType view") // Select only the fields we need
+      .sort({ roomNumber: "asc" }); // Sort by room number
 
-    if (!availablePresidentialRooms || availablePresidentialRooms.length === 0) {
+    if (
+      !availablePresidentialRooms ||
+      availablePresidentialRooms.length === 0
+    ) {
       return res.status(200).json({
         success: true,
         count: 0,
         data: [],
-        message: "No Presidential rooms are currently available"
+        message: "No Presidential rooms are currently available",
       });
     }
 
     // Format the response to be more user-friendly
-    const formattedRooms = availablePresidentialRooms.map(room => ({
+    const formattedRooms = availablePresidentialRooms.map((room) => ({
       roomNumber: room.roomNumber,
       price: room.rate,
       priceFormatted: `Rs ${room.rate.toLocaleString()}`,
       bedType: room.bedType,
       view: room.view,
-      roomId: room._id
+      roomId: room._id,
     }));
 
     res.status(200).json({
@@ -78,7 +73,6 @@ exports.getAvailablePresidentialRooms = async (req, res, next) => {
       count: formattedRooms.length,
       data: formattedRooms,
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: "Server Error" });
@@ -99,25 +93,18 @@ exports.getRoomById = async (req, res) => {
 
 exports.updateRoom = async (req, res) => {
   try {
-    const {
-      roomNumber,
-      bedType,
-      category,
-      view,
-      rate,
-      owner,
-      status
-    } = req.body;
+    const { roomNumber, bedType, category, view, rate, owner, status } =
+      req.body;
 
     // Build update object
     const updateData = { roomNumber, bedType, category, view, rate, owner };
     if (status !== undefined) updateData.status = status;
 
-    const updated = await Room.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true, omitUndefined: true }
-    );
+    const updated = await Room.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+      runValidators: true,
+      omitUndefined: true,
+    });
 
     if (!updated) {
       return res.status(404).json({ message: "Room not found" });
@@ -156,12 +143,10 @@ exports.deleteRoom = async (req, res) => {
 
 // controllers/room.controller.ts
 
-
 // Was: exports.getAvailableRooms
 // Now: still named the same so you don't have to change routes.
 // It returns rooms with status in ['available','reserved'].
 // For reserved rooms, it includes one active reservation (if any).
-
 
 exports.getAvailableRooms = async (req, res) => {
   try {
@@ -186,7 +171,15 @@ exports.getAvailableRooms = async (req, res) => {
             },
             { $sort: { startAt: 1 } },
             { $limit: 1 },
-            { $project: { _id: 1, fullName: 1, startAt: 1, endAt: 1, status: 1 } },
+            {
+              $project: {
+                _id: 1,
+                fullName: 1,
+                startAt: 1,
+                endAt: 1,
+                status: 1,
+              },
+            },
           ],
           as: "reservation",
         },
