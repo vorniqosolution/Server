@@ -8,11 +8,16 @@ const reservationSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true },
     cnic: { type: String, required: true, trim: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: "Room", required: true },
+    guest: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Guest",
+      default: null,
+    },
     startAt: { type: Date, required: true },
     endAt: { type: Date, required: true },
     status: {
       type: String,
-      enum: ["reserved", "checked-in", "cancelled"],
+      enum: ["reserved", "checked-in", "cancelled", "checked-out"],
       default: "reserved",
     },
     createdBy: {

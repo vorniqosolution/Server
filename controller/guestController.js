@@ -85,7 +85,12 @@ exports.checkoutGuest = async (req, res) => {
       room.status = "available";
       await room.save();
     }
-
+    // Change the status in reservation model
+    const reservation = await Reservation.findOneAndUpdate(
+      { guest: id },
+      { $set: { status: "checked-out" } },
+      { new: true }
+    );
     // Notify Inventory module of check-out
     try {
       await axios.post(
@@ -253,6 +258,7 @@ exports.createGuest = async (req, res) => {
       reservationId, // <-- must be sent by frontend for reserved rooms
     } = req.body;
 
+    console.log("Reservation id", reservationId);
     // 1) Find room FIRST
     const room = await Room.findOne({ roomNumber });
     if (!room) {
