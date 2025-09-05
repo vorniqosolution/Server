@@ -8,9 +8,11 @@ const puppeteer = require("puppeteer");
 const path = require("path");
 const fs = require("fs");
 const ejs = require("ejs");
-
+const s3 = require("../config/S3.js");
+const { PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const sendInvoiceEmail = async (
-  filePath,
+  pdfBuffer,
   invoiceNumber,
   guestName,
   roomNumber
@@ -23,21 +25,20 @@ const sendInvoiceEmail = async (
     },
   });
 
-  // <-- CHANGE: Create a more descriptive, human-friendly filename -->
   const friendlyFilename = `Invoice - ${guestName.replace(
     / /g,
     "_"
   )} - Room_${roomNumber} - ${invoiceNumber}.pdf`;
 
   const mailOptions = {
-    from: `"HSQ Towers" <${process.env.EMAIL_USER}>`, // <-- Updated sender name
+    from: `"HSQ Towers" <${process.env.EMAIL_USER}>`,
     to: process.env.OFFICE_EMAIL,
-    subject: `Invoice Archived: ${invoiceNumber} (Guest: ${guestName}, Room: ${roomNumber})`, // <-- Updated subject
-    text: `An invoice has been generated and archived for guest: ${guestName} in Room ${roomNumber}.\n\nInvoice Number: ${invoiceNumber}`, // <-- Updated body
+    subject: `Invoice Archived: ${invoiceNumber} (Guest: ${guestName}, Room: ${roomNumber})`,
+    text: `An invoice has been generated and archived for guest: ${guestName} in Room ${roomNumber}.\n\nInvoice Number: ${invoiceNumber}`,
     attachments: [
       {
-        filename: friendlyFilename, // <-- Use the new friendly filename
-        path: filePath,
+        filename: friendlyFilename,
+        content: pdfBuffer,
       },
     ],
   };
@@ -45,7 +46,44 @@ const sendInvoiceEmail = async (
   await transporter.sendMail(mailOptions);
 };
 
+// const sendInvoiceEmail = async (
+//   filePath,
+//   invoiceNumber,
+//   guestName,
+//   roomNumber
+// ) => {
+//   const transporter = nodemailer.createTransport({
+//     service: "gmail",
+//     auth: {
+//       user: process.env.EMAIL_USER,
+//       pass: process.env.EMAIL_PASS,
+//     },
+//   });
+
+//   // <-- CHANGE: Create a more descriptive, human-friendly filename -->
+//   const friendlyFilename = `Invoice - ${guestName.replace(
+//     / /g,
+//     "_"
+//   )} - Room_${roomNumber} - ${invoiceNumber}.pdf`;
+
+//   const mailOptions = {
+//     from: `"HSQ Towers" <${process.env.EMAIL_USER}>`, // <-- Updated sender name
+//     to: process.env.OFFICE_EMAIL,
+//     subject: `Invoice Archived: ${invoiceNumber} (Guest: ${guestName}, Room: ${roomNumber})`, // <-- Updated subject
+//     text: `An invoice has been generated and archived for guest: ${guestName} in Room ${roomNumber}.\n\nInvoice Number: ${invoiceNumber}`, // <-- Updated body
+//     attachments: [
+//       {
+//         filename: friendlyFilename, // <-- Use the new friendly filename
+//         path: filePath,
+//       },
+//     ],
+//   };
+
+//   await transporter.sendMail(mailOptions);
+// };
+
 // help of html-pdf library
+
 const generatePdfFromHtml = async (htmlContent) => {
   const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -58,6 +96,19 @@ const generatePdfFromHtml = async (htmlContent) => {
   const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
   await browser.close();
   return pdfBuffer;
+};
+
+// Upload PDF to S3
+const uploadInvoiceS3 = async (pdfBuffer, invoiceNumber) => {
+  const params = {
+    Bucket: process.env.S3_BUCKET,
+    Key: `invoices/${invoiceNumber}.pdf`,
+    Body: pdfBuffer,
+    ContentType: "application/pdf",
+  };
+  await s3.send(new PutObjectCommand(params));
+
+  return `invoices/${invoiceNumber}.pdf`;
 };
 
 // generate PDF from HTML using html-pdf
@@ -101,16 +152,11 @@ exports.sendInvoiceByEmail = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // The deep populate is essential for getting the room number
     const invoice = await Invoice.findById(id).populate({
       path: "guest",
-      populate: {
-        path: "room",
-        model: "Room",
-      },
+      populate: { path: "room", model: "Room" },
     });
 
-    // <-- CHANGE: Added a more robust check for guest and room data -->
     if (!invoice || !invoice.guest || !invoice.guest.room) {
       return res.status(404).json({
         success: false,
@@ -118,7 +164,7 @@ exports.sendInvoiceByEmail = async (req, res) => {
       });
     }
 
-    // 1. Render the EJS template to create the HTML content
+    // 1. Render EJS -> HTML
     const templatePath = path.resolve(
       __dirname,
       "..",
@@ -126,33 +172,23 @@ exports.sendInvoiceByEmail = async (req, res) => {
       "invoice-template.ejs"
     );
     const htmlContent = await ejs.renderFile(templatePath, {
-      invoice: invoice,
+      invoice,
       guest: invoice.guest,
     });
-    // console.log("htmlcontent", htmlContent);
 
-    // 2. Generate PDF from HTML
+    //  Generate PDF Buffer
     const pdfBuffer = await generatePdfFromHtml(htmlContent);
+    console.log("Invoice ganerated");
+    //  Upload to S3
+    const s3Key = await uploadInvoiceS3(pdfBuffer, invoice.invoiceNumber);
 
-    // 3. Ensure the target directory exists
-    const invoicesDir = path.join(__dirname, "..", "uploads", "invoices");
-    fs.mkdirSync(invoicesDir, { recursive: true });
-
-    // 4. Define the unique filename for saving on the server
-    const serverFilename = `invoice-${invoice.invoiceNumber}.pdf`;
-    const savePath = path.join(invoicesDir, serverFilename);
-
-    // 5. Save the PDF to the disk
-    fs.writeFileSync(savePath, pdfBuffer);
-
-    // 6. Update the database with the server path
-    invoice.pdfPath = `/uploads/invoices/${serverFilename}`;
+    // Save S3 path in DB
+    invoice.pdfPath = s3Key;
     await invoice.save();
-
-    // <-- CHANGE: Pass the guest name and room number to the email helper -->
-    // THIS CONTROLLER WRITE ON TOP
+    // console.log("INVOICE SEND TO S3");
+    //  Send Email with PDF buffer
     await sendInvoiceEmail(
-      savePath,
+      pdfBuffer,
       invoice.invoiceNumber,
       invoice.guest.fullName,
       invoice.guest.room.roomNumber
@@ -160,8 +196,8 @@ exports.sendInvoiceByEmail = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Invoice PDF saved and sent to internal records successfully!",
-      filePath: invoice.pdfPath,
+      message: "Invoice PDF uploaded to S3 and sent via email!",
+      s3Path: s3Key,
     });
   } catch (err) {
     console.error("sendInvoiceByEmail Error:", err);
@@ -172,6 +208,82 @@ exports.sendInvoiceByEmail = async (req, res) => {
     });
   }
 };
+
+// exports.sendInvoiceByEmail = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // The deep populate is essential for getting the room number
+//     const invoice = await Invoice.findById(id).populate({
+//       path: "guest",
+//       populate: {
+//         path: "room",
+//         model: "Room",
+//       },
+//     });
+
+//     // <-- CHANGE: Added a more robust check for guest and room data -->
+//     if (!invoice || !invoice.guest || !invoice.guest.room) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Invoice, associated guest, or room data not found.",
+//       });
+//     }
+
+//     // 1. Render the EJS template to create the HTML content
+//     const templatePath = path.resolve(
+//       __dirname,
+//       "..",
+//       "views",
+//       "invoice-template.ejs"
+//     );
+//     const htmlContent = await ejs.renderFile(templatePath, {
+//       invoice: invoice,
+//       guest: invoice.guest,
+//     });
+//     // console.log("htmlcontent", htmlContent);
+
+//     // 2. Generate PDF from HTML
+//     const pdfBuffer = await generatePdfFromHtml(htmlContent);
+
+//     // 3. Ensure the target directory exists
+//     const invoicesDir = path.join(__dirname, "..", "uploads", "invoices");
+//     fs.mkdirSync(invoicesDir, { recursive: true });
+
+//     // 4. Define the unique filename for saving on the server
+//     const serverFilename = `invoice-${invoice.invoiceNumber}.pdf`;
+//     const savePath = path.join(invoicesDir, serverFilename);
+
+//     // 5. Save the PDF to the disk
+//     fs.writeFileSync(savePath, pdfBuffer);
+
+//     // 6. Update the database with the server path
+//     invoice.pdfPath = `/uploads/invoices/${serverFilename}`;
+//     await invoice.save();
+
+//     // <-- CHANGE: Pass the guest name and room number to the email helper -->
+//     // THIS CONTROLLER WRITE ON TOP
+//     await sendInvoiceEmail(
+//       savePath,
+//       invoice.invoiceNumber,
+//       invoice.guest.fullName,
+//       invoice.guest.room.roomNumber
+//     );
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Invoice PDF saved and sent to internal records successfully!",
+//       filePath: invoice.pdfPath,
+//     });
+//   } catch (err) {
+//     console.error("sendInvoiceByEmail Error:", err);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to process and send invoice",
+//       error: err.message,
+//     });
+//   }
+// };
 
 exports.searchInvoices = async (req, res) => {
   try {
@@ -314,12 +426,12 @@ exports.deleteInvoice = async (req, res) => {
     }
 
     // Optional: Delete the associated PDF file from the server
-    if (invoice.pdfPath) {
-      const fullPath = path.join(__dirname, "..", invoice.pdfPath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-    }
+    // if (invoice.pdfPath) {
+    //   const fullPath = path.join(__dirname, "..", invoice.pdfPath);
+    //   if (fs.existsSync(fullPath)) {
+    //     fs.unlinkSync(fullPath);
+    //   }
+    // }
 
     res.status(200).json({
       success: true,
@@ -346,14 +458,13 @@ exports.downloadInvoicePdf = async (req, res) => {
       });
     }
 
-    const fullPath = path.join(__dirname, "..", invoice.pdfPath);
-
-    if (!fs.existsSync(fullPath)) {
-      return res.status(404).json({
-        success: false,
-        message: "PDF file is missing from the server.",
-      });
-    }
+    // const fullPath = path.join(__dirname, "..", invoice.pdfPath);
+    // if (!fs.existsSync(fullPath)) {
+    //   return res.status(404).json({
+    //     success: false,
+    //     message: "PDF file is missing from the server.",
+    //   });
+    // }
 
     // Create the human-friendly filename for download
     const friendlyFilename = `Invoice - ${invoice.guest.fullName.replace(
@@ -361,8 +472,18 @@ exports.downloadInvoicePdf = async (req, res) => {
       "_"
     )} - Room_${invoice.guest.room.roomNumber} - ${invoice.invoiceNumber}.pdf`;
 
-    // Use res.download() to send the file to the client
-    res.download(fullPath, friendlyFilename);
+    // Generate signed URL for S3 object
+    const command = new GetObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: invoice.pdfPath,
+      ResponseContentDisposition: `attachment; filename="${friendlyFilename}"`,
+    });
+    const signedUrl = await getSignedUrl(s3, command, { expiresIn: 60 });
+
+    res.json({
+      success: true,
+      url: signedUrl,
+    });
   } catch (err) {
     res
       .status(500)

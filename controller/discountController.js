@@ -86,7 +86,7 @@ exports.GetCurrentDiscount = async (req, res) => {
       startDate: { $lte: currentDate },
       endDate: { $gte: currentDate },
     });
-    console.log("Current discount", currentDiscounts);
+    // console.log("Current discount", currentDiscounts);
     if (currentDiscounts.length === 0) {
       return res
         .status(200)
