@@ -26,9 +26,8 @@ exports.login = async (req, res) => {
     // 4. Set it in an HttpOnly cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production", // false in dev
+      secure: false,
       sameSite: "Lax", // allows cross-site POSTs
-      domain: process.env.DOMAIN_NAME || undefined,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
