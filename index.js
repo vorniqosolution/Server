@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
-
+const path = require("path"); // Add path module
 const cookieParser = require("cookie-parser");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
@@ -37,11 +37,8 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 
-// Simple health & version routes (great for Docker/ALB checks)
-// app.get("/health", (req, res) => res.json({ ok: true, ts: Date.now() }));
-// app.get("/version", (req, res) =>
-//   res.json({ env: process.env.NODE_ENV || "dev" })
-// );
+// Serve static files from the uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to MongoDB
 connectDB();
@@ -64,5 +61,5 @@ app.get("/test", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () =>
-  console.log(`Server running on port ${PORT}`)
+  console.log(`Server running on port ${PORT} and connected to ${process.env.MONGO_URI}🤷‍♀️`)
 );
