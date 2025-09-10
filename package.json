@@ -25,6 +25,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.2",
     "multer": "^2.0.2",
+    "node-schedule": "^2.1.1",
     "nodemailer": "^7.0.5",
     "puppeteer": "^24.17.0"
   },
