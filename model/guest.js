@@ -13,14 +13,14 @@ const guestSchema = new mongoose.Schema(
     },
     cnic: { type: String, required: true, trim: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: "Room", required: true },
-    checkInAt: { type: Date, default: Date.now },
+    checkInAt: { type: Date, required: true }, // <-- CHANGED
     checkInTime: {
       type: String,
       default: function () {
         return this.checkInAt.toTimeString().slice(0, 5);
       },
     },
-    checkOutAt: { type: Date },
+    checkOutAt: { type: Date, required: true }, // <-- CHANGED
     checkOutTime: {
       type: String,
       default: function () {

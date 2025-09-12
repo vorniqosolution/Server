@@ -40,6 +40,7 @@ const {
   deleteRoom,
   getAvailableRooms,
   getAvailablePresidentialRooms,
+  getRoomTimeline,
 } = require("../controller/roomController");
 
 // Import multer configuration
@@ -59,5 +60,7 @@ router.get("/get-presidential-rooms", getAvailablePresidentialRooms);
 router.get("/get-by-id/:id", getRoomById);
 router.put("/update-room/:id", upload.array('images', 6), updateRoom);
 router.delete("/delete-room/:id", deleteRoom);
+// ADD THIS NEW ROUTE
+router.get("/:id/timeline", getRoomTimeline);
 
 module.exports = router;

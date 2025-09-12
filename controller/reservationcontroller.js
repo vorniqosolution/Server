@@ -1,110 +1,151 @@
 const Reservation = require("../model/reservationmodel");
 const Room = require("../model/room");
 const Guest = require("../model/guest");
+
 exports.createReservation = async (req, res) => {
   try {
-    const {
-      fullName,
-      address,
-      phone,
-      email,
-      cnic,
-      roomNumber,
-      checkin,
-      checkout,
-    } = req.body;
-    if (
-      (!fullName,
-      !address,
-      !phone,
-      !email,
-      !cnic,
-      !roomNumber,
-      !checkin,
-      !checkout)
-    ) {
-      return res
-        .status(400)
-        .json({ message: "Please enter complete credentials" });
+    const { fullName, address, phone, email, cnic, roomNumber, checkin, checkout } = req.body;
+    if (!fullName || !address || !phone || !cnic || !roomNumber || !checkin || !checkout) {
+      return res.status(400).json({ success: false, message: "Please provide all required fields." });
     }
+
     const room = await Room.findOne({ roomNumber });
-    if (!room) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Room not found" });
-    }
-    if (room.status === "occupied") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Room is currently occupied." });
-    }
+    if (!room) return res.status(404).json({ success: false, message: "Room not found" });
+    if (room.status === "maintenance") return res.status(400).json({ success: false, message: "Room is under maintenance." });
 
-    if (room.status === "reserved") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Room is already reserved." });
+    // Use the reliable, native JavaScript UTC date parsing
+    const startAt = new Date(`${checkin}T00:00:00.000Z`);
+    const endAt = new Date(`${checkout}T00:00:00.000Z`);
+
+    if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid date format. Please use YYYY-MM-DD." });
     }
 
-    if (room.status === "maintenance") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Room is under maintenance." });
-    }
+    if (endAt <= startAt) return res.status(400).json({ success: false, message: "Checkout date must be after check-in date" });
 
-    const startAt = new Date(checkin);
-    const endAt = new Date(checkout);
-    console.log("startAt", startAt);
-    console.log("endAt", endAt);
-    // 2. Validate dates
-    if (endAt <= startAt) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Checkout must be after checkin" });
-    }
+    // The rest of the logic is already robust
+    const existingReservation = await Reservation.findOne({ room: room._id, status: { $in: ["reserved", "confirmed"] }, startAt: { $lt: endAt }, endAt: { $gt: startAt } });
+    if (existingReservation) return res.status(400).json({ success: false, message: `Room ${roomNumber} already has a reservation during this period.` });
 
-    // 3. Check for overlapping reservations for this room
-    const existingReservation = await Reservation.findOne({
-      room: room._id,
-      status: { $in: ["reserved", "checked-in"] },
-      $or: [
-        { startAt: { $lt: endAt }, endAt: { $gt: startAt } }, // overlap condition
-      ],
-    });
+    const overlappingGuest = await Guest.findOne({ room: room._id, status: 'checked-in', checkInAt: { $lt: endAt }, checkOutAt: { $gt: startAt } });
+    if (overlappingGuest) return res.status(400).json({ success: false, message: `Room ${roomNumber} is occupied by a guest during this period.` });
 
-    if (existingReservation) {
-      return res.status(400).json({
-        success: false,
-        message: `Room ${roomNumber} is already reserved or occupied during this period.`,
-      });
-    }
-
-    // 4. Create reservation
     const reservation = await Reservation.create({
-      fullName,
-      address,
-      phone,
-      email,
-      cnic,
-      room: room._id,
-      startAt,
-      endAt,
+      fullName, address, phone, email, cnic, room: room._id, startAt, endAt,
       createdBy: req.user.userId,
     });
-
-    // 5. Update room status
-    room.status = "reserved";
-    await room.save();
 
     return res.status(201).json({ success: true, data: reservation });
   } catch (err) {
     console.error("createReservation Error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: err.message,
-    });
+    return res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
+
+// exports.createReservation = async (req, res) => {
+//   try {
+//     const {
+//       fullName,
+//       address,
+//       phone,
+//       email,
+//       cnic,
+//       roomNumber,
+//       checkin,
+//       checkout,
+//     } = req.body;
+//     if (
+//       (!fullName,
+//       !address,
+//       !phone,
+//       !email,
+//       !cnic,
+//       !roomNumber,
+//       !checkin,
+//       !checkout)
+//     ) {
+//       return res
+//         .status(400)
+//         .json({ message: "Please enter complete credentials" });
+//     }
+//     const room = await Room.findOne({ roomNumber });
+//     if (!room) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Room not found" });
+//     }
+//     if (room.status === "occupied") {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Room is currently occupied." });
+//     }
+
+//     if (room.status === "reserved") {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Room is already reserved." });
+//     }
+
+//     if (room.status === "maintenance") {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Room is under maintenance." });
+//     }
+
+//     const startAt = new Date(checkin);
+//     const endAt = new Date(checkout);
+//     console.log("startAt", startAt);
+//     console.log("endAt", endAt);
+//     // 2. Validate dates
+//     if (endAt <= startAt) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Checkout must be after checkin" });
+//     }
+
+//     // 3. Check for overlapping reservations for this room
+//     const existingReservation = await Reservation.findOne({
+//       room: room._id,
+//       status: { $in: ["reserved", "checked-in"] },
+//       $or: [
+//         { startAt: { $lt: endAt }, endAt: { $gt: startAt } }, // overlap condition
+//       ],
+//     });
+
+//     if (existingReservation) {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Room ${roomNumber} is already reserved or occupied during this period.`,
+//       });
+//     }
+
+//     // 4. Create reservation
+//     const reservation = await Reservation.create({
+//       fullName,
+//       address,
+//       phone,
+//       email,
+//       cnic,
+//       room: room._id,
+//       startAt,
+//       endAt,
+//       createdBy: req.user.userId,
+//     });
+
+//     // 5. Update room status
+//     room.status = "reserved";
+//     await room.save();
+
+//     return res.status(201).json({ success: true, data: reservation });
+//   } catch (err) {
+//     console.error("createReservation Error:", err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error",
+//       error: err.message,
+//     });
+//   }
+// };
 
 exports.getReservations = async (req, res) => {
   try {

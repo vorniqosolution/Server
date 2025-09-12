@@ -1,10 +1,11 @@
 const Room = require("../model/room");
+const Reservation = require("../model/reservationmodel");
+const Guest = require("../model/guest");
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
 const unlinkAsync = util.promisify(fs.unlink);
 
-const Reservation = require("../model/reservationmodel");
 
 exports.createRoom = async (req, res) => {
   try {
@@ -242,61 +243,166 @@ exports.deleteRoom = async (req, res) => {
 
 exports.getAvailableRooms = async (req, res) => {
   try {
-    const today = new Date();
+    const { checkin, checkout } = req.query;
+    if (!checkin || !checkout) {
+      return res.status(400).json({ success: false, message: "Check-in and checkout dates are required." });
+    }
 
-    const rooms = await Room.aggregate([
-      // 1) Only show "available" and "reserved"
-      { $match: { status: { $in: ["available", "reserved"] } } },
+    // Use the reliable, native JavaScript UTC date parsing
+    const startDate = new Date(`${checkin}T00:00:00.000Z`);
+    const endDate = new Date(`${checkout}T00:00:00.000Z`);
 
-      // 2) Attach ONE active reservation (confirmed/reserved and not ended)
-      {
-        $lookup: {
-          from: "reservations", // mongoose pluralizes 'Reservation' -> 'reservations'
-          let: { rn: "$roomNumber" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$roomNumber", "$$rn"] },
-                status: { $in: ["reserved", "confirmed"] },
-                endAt: { $gte: today },
-              },
-            },
-            { $sort: { startAt: 1 } },
-            { $limit: 1 },
-            {
-              $project: {
-                _id: 1,
-                fullName: 1,
-                startAt: 1,
-                endAt: 1,
-                status: 1,
-              },
-            },
-          ],
-          as: "reservation",
-        },
-      },
-      { $addFields: { reservation: { $arrayElemAt: ["$reservation", 0] } } },
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid date format. Please use YYYY-MM-DD." });
+    }
 
-      // 3) Keep only fields your UI needs
-      {
-        $project: {
-          _id: 1,
-          roomNumber: 1,
-          bedType: 1,
-          rate: 1,
-          category: 1,
-          status: 1,
-          reservation: 1, // will be undefined for "available" rooms
-        },
-      },
+    if (endDate <= startDate) {
+      return res.status(400).json({ success: false, message: "Check-out date must be after check-in date." });
+    }
 
-      { $sort: { roomNumber: 1 } },
-    ]);
+    // The rest of the logic is already robust and correct
+    const reservedRooms = await Reservation.find({
+      status: { $in: ["reserved", "confirmed"] },
+      startAt: { $lt: endDate },
+      endAt: { $gt: startDate },
+    }).select('room');
+    
+    const occupiedRooms = await Guest.find({
+      status: 'checked-in',
+      checkInAt: { $lt: endDate },
+      checkOutAt: { $gt: startDate },
+    }).select('room');
+    
+    const unavailableRoomIds = [
+      ...reservedRooms.map(r => r.room.toString()),
+      ...occupiedRooms.map(g => g.room.toString())
+    ];
+    const uniqueUnavailableRoomIds = [...new Set(unavailableRoomIds)];
 
-    res.status(200).json({ rooms });
+    const availableRooms = await Room.find({
+      _id: { $nin: uniqueUnavailableRoomIds },
+      status: { $ne: 'maintenance' }
+    }).sort({ roomNumber: 1 });
+
+    return res.status(200).json({ success: true, rooms: availableRooms });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("getAvailableRooms Error:", err);
+    return res.status(500).json({ success: false, message: "Server error", error: err.message });
+  }
+};
+
+// exports.getAvailableRooms = async (req, res) => {
+//   try {
+//     const today = new Date();
+
+//     const rooms = await Room.aggregate([
+//       // 1) Only show "available" and "reserved"
+//       { $match: { status: { $in: ["available", "reserved"] } } },
+
+//       // 2) Attach ONE active reservation (confirmed/reserved and not ended)
+//       {
+//         $lookup: {
+//           from: "reservations", // mongoose pluralizes 'Reservation' -> 'reservations'
+//           let: { rn: "$roomNumber" },
+//           pipeline: [
+//             {
+//               $match: {
+//                 $expr: { $eq: ["$roomNumber", "$$rn"] },
+//                 status: { $in: ["reserved", "confirmed"] },
+//                 endAt: { $gte: today },
+//               },
+//             },
+//             { $sort: { startAt: 1 } },
+//             { $limit: 1 },
+//             {
+//               $project: {
+//                 _id: 1,
+//                 fullName: 1,
+//                 startAt: 1,
+//                 endAt: 1,
+//                 status: 1,
+//               },
+//             },
+//           ],
+//           as: "reservation",
+//         },
+//       },
+//       { $addFields: { reservation: { $arrayElemAt: ["$reservation", 0] } } },
+
+//       // 3) Keep only fields your UI needs
+//       {
+//         $project: {
+//           _id: 1,
+//           roomNumber: 1,
+//           bedType: 1,
+//           rate: 1,
+//           category: 1,
+//           status: 1,
+//           reservation: 1, // will be undefined for "available" rooms
+//         },
+//       },
+
+//       { $sort: { roomNumber: 1 } },
+//     ]);
+
+//     res.status(200).json({ rooms });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Server error", error: err.message });
+//   }
+// };
+
+exports.getRoomTimeline = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Get the start of today in UTC for a reliable starting point
+    const startDate = new Date();
+    startDate.setUTCHours(0, 0, 0, 0);
+
+    // Calculate the end date 30 days from now
+    const endDate = new Date(startDate);
+    endDate.setUTCDate(startDate.getUTCDate() + 30);
+
+    // The rest of the logic is already robust and correct
+    const guests = await Guest.find({
+      room: id,
+      checkInAt: { $lt: endDate },
+      checkOutAt: { $gt: startDate },
+    }).select('fullName checkInAt checkOutAt status');
+
+    const reservations = await Reservation.find({
+      room: id,
+      status: { $in: ['reserved', 'confirmed'] },
+      startAt: { $lt: endDate },
+      endAt: { $gt: startDate },
+    }).select('fullName startAt endAt status');
+
+    const bookings = [
+      ...guests.map(g => ({
+        type: 'Guest (Checked-in)',
+        name: g.fullName,
+        startDate: g.checkInAt,
+        endDate: g.checkOutAt,
+        status: g.status,
+      })),
+      ...reservations.map(r => ({
+        type: 'Reservation',
+        name: r.fullName,
+        startDate: r.startAt,
+        endDate: r.endAt,
+        status: r.status,
+      })),
+    ];
+
+    bookings.sort((a, b) => a.startDate - b.startDate);
+
+    res.status(200).json({ success: true, timeline: bookings });
+
+  } catch (err)
+ {
+    console.error("getRoomTimeline Error:", err);
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
