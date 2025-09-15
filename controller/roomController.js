@@ -6,7 +6,7 @@ const path = require('path');
 const util = require('util');
 const unlinkAsync = util.promisify(fs.unlink);
 
-
+// CRM Functions
 exports.createRoom = async (req, res) => {
   try {
     const { roomNumber, bedType, category, view, rate, owner, status } =
@@ -292,67 +292,6 @@ exports.getAvailableRooms = async (req, res) => {
   }
 };
 
-// exports.getAvailableRooms = async (req, res) => {
-//   try {
-//     const today = new Date();
-
-//     const rooms = await Room.aggregate([
-//       // 1) Only show "available" and "reserved"
-//       { $match: { status: { $in: ["available", "reserved"] } } },
-
-//       // 2) Attach ONE active reservation (confirmed/reserved and not ended)
-//       {
-//         $lookup: {
-//           from: "reservations", // mongoose pluralizes 'Reservation' -> 'reservations'
-//           let: { rn: "$roomNumber" },
-//           pipeline: [
-//             {
-//               $match: {
-//                 $expr: { $eq: ["$roomNumber", "$$rn"] },
-//                 status: { $in: ["reserved", "confirmed"] },
-//                 endAt: { $gte: today },
-//               },
-//             },
-//             { $sort: { startAt: 1 } },
-//             { $limit: 1 },
-//             {
-//               $project: {
-//                 _id: 1,
-//                 fullName: 1,
-//                 startAt: 1,
-//                 endAt: 1,
-//                 status: 1,
-//               },
-//             },
-//           ],
-//           as: "reservation",
-//         },
-//       },
-//       { $addFields: { reservation: { $arrayElemAt: ["$reservation", 0] } } },
-
-//       // 3) Keep only fields your UI needs
-//       {
-//         $project: {
-//           _id: 1,
-//           roomNumber: 1,
-//           bedType: 1,
-//           rate: 1,
-//           category: 1,
-//           status: 1,
-//           reservation: 1, // will be undefined for "available" rooms
-//         },
-//       },
-
-//       { $sort: { roomNumber: 1 } },
-//     ]);
-
-//     res.status(200).json({ rooms });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Server error", error: err.message });
-//   }
-// };
-
 exports.getRoomTimeline = async (req, res) => {
   try {
     const { id } = req.params;
@@ -406,3 +345,6 @@ exports.getRoomTimeline = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
+
+// WEBSITE FUNCTIONS
+
