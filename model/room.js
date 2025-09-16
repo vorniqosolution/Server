@@ -69,7 +69,7 @@ const roomSchema = new mongoose.Schema(
   }
 );
 
-// Human-readable label for dropdowns: "411 — Two Bed Dulux Lobby Facing — $28,000"
+// Human-readable label for dropdowns: "411 — Two Bed Dulux Lobby Facing — Rs28,000"
 roomSchema.virtual("dropdownLabel").get(function () {
   return `${
     this.roomNumber

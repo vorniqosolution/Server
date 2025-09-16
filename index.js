@@ -18,17 +18,31 @@ const reservationRoutes = require("./routes/reservationRoutes");
 dotenv.config();
 const app = express();
 
-const allowed = (process.env.ALLOWED_ORIGIN || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+// const allowed = (process.env.ALLOWED_ORIGIN || "")
+//   .split(",")
+//   .map((s) => s.trim())
+//   .filter(Boolean);
 
+// app.use(
+//   cors({
+//     origin: (origin, cb) => {
+//       // allow server-to-server (no origin) and any whitelisted origin
+//       if (!origin || allowed.includes(origin)) return cb(null, true);
+//       cb(new Error("Not allowed by CORS"));
+//     },
+//     credentials: true,
+//   })
+// );
+
+const allowedOrigins = [process.env.ALLOWED_ORIGIN, process.env.ALLOWED_ORIGIN_2];
 app.use(
   cors({
-    origin: (origin, cb) => {
-      // allow server-to-server (no origin) and any whitelisted origin
-      if (!origin || allowed.includes(origin)) return cb(null, true);
-      cb(new Error("Not allowed by CORS"));
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
     },
     credentials: true,
   })
