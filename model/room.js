@@ -1,4 +1,3 @@
-// model/room.js
 const mongoose = require("mongoose");
 
 const roomSchema = new mongoose.Schema(
@@ -63,13 +62,17 @@ const roomSchema = new mongoose.Schema(
         required: true
       }
     }],
+    amenities: {
+      type: [String],
+      default: [],
+      enum: ["Air Conditioning", "TV", "WiFi", "Mini Bar", "Room Safety", "Telephone", "Laundry"],
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Human-readable label for dropdowns: "411 — Two Bed Dulux Lobby Facing — Rs28,000"
 roomSchema.virtual("dropdownLabel").get(function () {
   return `${
     this.roomNumber

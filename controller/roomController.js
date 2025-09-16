@@ -9,7 +9,7 @@ const unlinkAsync = util.promisify(fs.unlink);
 // CRM Functions
 exports.createRoom = async (req, res) => {
   try {
-    const { roomNumber, bedType, category, view, rate, owner, status } =
+    const { roomNumber, bedType, category, view, rate, owner, status, amenities } =
       req.body;
 
     // Prevent duplicate room numbers
@@ -18,7 +18,7 @@ exports.createRoom = async (req, res) => {
     }
 
     // Build payload
-    const roomData = { roomNumber, bedType, category, view, rate, owner };
+    const roomData = { roomNumber, bedType, category, view, rate, owner, amenities };
     if (status) roomData.status = status;
 
     if (req.files && req.files.length > 0) {
@@ -44,7 +44,7 @@ exports.createRoom = async (req, res) => {
 
 exports.getRooms = async (req, res) => {
   try {
-    // Optionally sort by view and roomNumber for grouped dropdowns
+    
     const rooms = await Room.find().sort({ roomNumber: 1 });
     res.status(200).json({ rooms });
   } catch (err) {
@@ -112,7 +112,7 @@ exports.getRoomById = async (req, res) => {
 
 exports.updateRoom = async (req, res) => {
   try {
-    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages } = req.body;
+    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities } = req.body;
 
     // Find the room first
     const room = await Room.findById(req.params.id);
@@ -131,7 +131,7 @@ exports.updateRoom = async (req, res) => {
     }
 
     // Build update object
-    const updateData = { roomNumber, bedType, category, view, rate, owner };
+    const updateData = { roomNumber, bedType, category, view, rate, owner, amenities };
     if (status !== undefined) updateData.status = status;
 
     // Handle deleted images
