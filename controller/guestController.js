@@ -26,14 +26,11 @@ exports.createGuest = async (req, res) => {
       reservationId,
     } = req.body;
 
-    // 1. VALIDATE AND PARSE DATES (NATIVE JAVASCRIPT METHOD)
     if (!checkInDate || !checkOutDate) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Check-in and check-out dates are required.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Check-in and check-out dates are required.",
+      });
     }
 
     // This format explicitly tells the Date constructor to parse in UTC (the 'Z' at the end).
@@ -43,26 +40,22 @@ exports.createGuest = async (req, res) => {
 
     // Check if the dates are valid after parsing
     if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid date format. Please use YYYY-MM-DD.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Please use YYYY-MM-DD.",
+      });
     }
 
     if (checkOut <= checkIn) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Check-out date must be after the check-in date.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Check-out date must be after the check-in date.",
+      });
     }
 
     // 2. ENFORCE "TODAY ONLY" RULE
     const today = new Date();
-    // Set 'today' to the beginning of the day in UTC for a fair comparison
+
     today.setUTCHours(0, 0, 0, 0);
 
     if (checkIn.getTime() !== today.getTime()) {
@@ -96,13 +89,11 @@ exports.createGuest = async (req, res) => {
       blockingReservation &&
       (!reservationId || blockingReservation._id.toString() !== reservationId)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "Room is reserved for another guest today. Please check in via the reservation.",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "Room is reserved for another guest today. Please check in via the reservation.",
+      });
     }
 
     // --- FROM HERE, THE REST OF THE LOGIC IS UNCHANGED AND CORRECT ---
@@ -113,7 +104,7 @@ exports.createGuest = async (req, res) => {
     const taxRate = Number(settings?.taxRate ?? 0);
     const rate = Number(room.rate) || 0;
     const roomTotal = rate * nights;
-    console.log("//Total Room//", roomTotal)
+    console.log("//Total Room//", roomTotal);
     const additionalDiscountAmount = Math.min(
       Math.max(0, Number(additionaldiscount) || 0),
       roomTotal
@@ -126,12 +117,10 @@ exports.createGuest = async (req, res) => {
         endDate: { $gte: today },
       });
       if (!validDiscount)
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "No valid discount is available for today.",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "No valid discount is available for today.",
+        });
       stdPct = Number(validDiscount.percentage) || 0;
       discountTitle = validDiscount.title;
     }
@@ -169,9 +158,32 @@ exports.createGuest = async (req, res) => {
         status: "checked-in",
         guest: guest._id,
       });
+
+    // await Invoice.create({
+    //   invoiceNumber: `HSQ-${Date.now()}`,
+    //   guest: guest._id,
+    //   items: [
+    //     {
+    //       description: `Room Rent (${room.category} - #${room.roomNumber})`,
+    //       quantity: nights,
+    //       unitPrice: rate,
+    //       total: roomTotal,
+    //     },
+    //   ],
+    //   subtotal: roomTotal,
+    //   discountAmount: standardDiscountAmount,
+    //   additionaldiscount: additionalDiscountAmount,
+    //   taxRate,
+    //   taxAmount: gstAmount,
+    //   grandTotal: totalRent,
+    //   dueDate: checkOut,
+    //   status: "pending",
+    //   createdBy: req.user.userId,
+    // });
+    // NEW: Upgraded invoice creation with permanent snapshot data
     await Invoice.create({
       invoiceNumber: `HSQ-${Date.now()}`,
-      guest: guest._id,
+      guest: guest._id, // Keep the link to the live guest record
       items: [
         {
           description: `Room Rent (${room.category} - #${room.roomNumber})`,
@@ -189,6 +201,18 @@ exports.createGuest = async (req, res) => {
       dueDate: checkOut,
       status: "pending",
       createdBy: req.user.userId,
+
+      // Save the permanent snapshot data
+      checkInAt: guest.checkInAt,
+      guestDetails: {
+        fullName: guest.fullName,
+        phone: guest.phone,
+        cnic: guest.cnic,
+      },
+      roomDetails: {
+        roomNumber: room.roomNumber,
+        category: room.category,
+      },
     });
     try {
       await axios.post(
@@ -209,13 +233,11 @@ exports.createGuest = async (req, res) => {
       console.error("Inventory check-in failed:", invErr?.message);
     }
 
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: "Guest checked in successfully",
-        data: { guest },
-      });
+    return res.status(201).json({
+      success: true,
+      message: "Guest checked in successfully",
+      data: { guest },
+    });
   } catch (err) {
     console.error("createGuest Error:", err);
     return res
@@ -459,4 +481,3 @@ exports.UpdateGuestById = async (req, res) => {
     });
   }
 };
-
