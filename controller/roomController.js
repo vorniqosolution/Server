@@ -9,8 +9,12 @@ const unlinkAsync = util.promisify(fs.unlink);
 // CRM Functions
 exports.createRoom = async (req, res) => {
   try {
-    const { roomNumber, bedType, category, view, rate, owner, status, amenities } =
+    const { roomNumber, bedType, category, view, rate, owner, status, amenities, publicDescription, adults } =
       req.body;
+
+      // --- ADD THIS LINE TO HANDLE THE BOOLEAN CONVERSION ---
+    const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
+    // --- END OF CHANGE ---
 
     // Prevent duplicate room numbers
     if (await Room.findOne({ roomNumber })) {
@@ -18,7 +22,7 @@ exports.createRoom = async (req, res) => {
     }
 
     // Build payload
-    const roomData = { roomNumber, bedType, category, view, rate, owner, amenities };
+    const roomData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults };
     if (status) roomData.status = status;
 
     if (req.files && req.files.length > 0) {
@@ -112,7 +116,11 @@ exports.getRoomById = async (req, res) => {
 
 exports.updateRoom = async (req, res) => {
   try {
-    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities } = req.body;
+    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities, publicDescription, adults } = req.body;
+
+    // --- ADD THIS LINE TO HANDLE THE BOOLEAN CONVERSION ---
+    const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
+    // --- END OF CHANGE ---
 
     // Find the room first
     const room = await Room.findById(req.params.id);
@@ -131,7 +139,7 @@ exports.updateRoom = async (req, res) => {
     }
 
     // Build update object
-    const updateData = { roomNumber, bedType, category, view, rate, owner, amenities };
+    const updateData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults };
     if (status !== undefined) updateData.status = status;
 
     // Handle deleted images
@@ -345,6 +353,4 @@ exports.getRoomTimeline = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
-
-// WEBSITE FUNCTIONS
 

@@ -38,34 +38,74 @@ const roomSchema = new mongoose.Schema(
       enum: ["available", "reserved", "occupied", "maintenance"],
       default: "available",
     },
+    
+    adults: {
+        type: Number,
+        required: true,
+        min: 1,
+        default: 2,
+    },
+    
+    cleaniness: {
+      type: String,
+      trim: true,
+      default:
+        "Redefining standard living our rooms.",
+    },
 
     owner: {
       type: String,
       required: true,
       trim: true,
     },
-    images: [{
-      filename: {
-        type: String,
-        required: true
+    images: [
+      {
+        filename: {
+          type: String,
+          required: true,
+        },
+        path: {
+          type: String,
+          required: true,
+        },
+        mimetype: {
+          type: String,
+          required: true,
+        },
+        size: {
+          type: Number,
+          required: true,
+        },
       },
-      path: {
-        type: String,
-        required: true
-      },
-      mimetype: {
-        type: String,
-        required: true
-      },
-      size: {
-        type: Number,
-        required: true
-      }
-    }],
+    ],
     amenities: {
       type: [String],
       default: [],
-      enum: ["Air Conditioning", "TV", "WiFi", "Mini Bar", "Room Safety", "Telephone", "Laundry"],
+      enum: [
+        "Air Conditioning",
+        "TV",
+        "WiFi",
+        "Mini Bar",
+        "Room Safety",
+        "Telephone",
+        "Laundry",
+      ],
+    },
+    isPubliclyVisible: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    publicName: {
+      type: String,
+      trim: true,
+      default: function () {
+        return `${this.bedType} - ${this.category}`;
+      },
+    },
+    publicDescription: {
+      type: String,
+      trim: true,
     },
   },
   {
