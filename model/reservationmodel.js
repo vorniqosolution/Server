@@ -15,11 +15,26 @@ const reservationSchema = new mongoose.Schema(
     },
     startAt: { type: Date, required: true },
     endAt: { type: Date, required: true },
+    expectedArrivalTime: {
+      type: String,
+      trim: true,
+    },
     status: {
       type: String,
       enum: ["reserved", "checked-in", "cancelled", "checked-out"],
       default: "reserved",
     },
+    source: {
+      type: String,
+      enum: ["CRM", "Website", "API"],
+      default: "CRM",
+    },
+    specialRequest: { type: String, trim: true },
+    paymentMethod: {
+      type: String,
+      enum: ["Cash", "Card", "Online", "Pay At Hotel"],
+    },
+    promoCode: { type: String, trim: true },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

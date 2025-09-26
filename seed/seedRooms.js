@@ -1,42 +1,39 @@
 // scripts/seedRooms.js
-require('dotenv').config();           // if you use a .env file
+require('dotenv').config();
 const mongoose = require('mongoose');
-const Room = require('../model/room'); // adjust path if needed
+const Room = require('../model/room');
 
-// 1. Define your rooms
-// (These are the ones you marked in the images,
-//  mapped into bedType / category / view / rate / owner)
 const rooms = [
-  { roomNumber: '411', bedType: 'Two Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception' },
-  { roomNumber: '605', bedType: 'Two Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception' },
+  { roomNumber: '411', bedType: 'Two Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '605', bedType: 'One Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception', isPubliclyVisible: true },
 
-  { roomNumber: '305', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
-  { roomNumber: '311', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
-  { roomNumber: '312', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
-  { roomNumber: '313', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
-  { roomNumber: '409', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
-  { roomNumber: '410', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
-  { roomNumber: '508', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
-  { roomNumber: '607', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception' },
+  { roomNumber: '305', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '311', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '312', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '313', bedType: 'One Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },  
+  { roomNumber: '409', bedType: 'One Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '410', bedType: 'One Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '508', bedType: 'Two Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '607', bedType: 'Two Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },  
 
-  { roomNumber: '309', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception' },
-  { roomNumber: '407', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception' },
-  { roomNumber: '412', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception' },
-  { roomNumber: '506', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception' },
-  { roomNumber: '509', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception' },
+  { roomNumber: '309', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '407', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '412', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '506', bedType: 'Two Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '509', bedType: 'Two Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
 
-  { roomNumber: '609', bedType: 'One Bed',  category: 'Deluxe',       view: 'Corner',          rate: 20000, owner: 'Reception' },
+  { roomNumber: '609', bedType: 'One Bed',  category: 'Deluxe',       view: 'Corner',          rate: 20000, owner: 'Reception', isPubliclyVisible: true },
 
-  { roomNumber: '303', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception' },
-  { roomNumber: '304', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception' },
-  { roomNumber: '402', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception' },
-  { roomNumber: '404', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception' },
-  { roomNumber: '603', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception' },
-  { roomNumber: '604', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception' },
+  { roomNumber: '303', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '304', bedType: 'One Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '402', bedType: 'Two Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '404', bedType: 'Two Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '603', bedType: 'Two Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '604', bedType: 'Two Bed',  category: 'Executive',    view: 'Valley View',     rate: 25000, owner: 'Reception', isPubliclyVisible: true },
 
-  { roomNumber: '503', bedType: 'One Bed',  category: 'Presidential', view: 'Valley View',     rate: 30000, owner: 'Reception' },
-  { roomNumber: '504', bedType: 'One Bed',  category: 'Presidential', view: 'Valley View',     rate: 30000, owner: 'Reception' },
-  { roomNumber: '505', bedType: 'One Bed',  category: 'Presidential', view: 'Valley View',     rate: 30000, owner: 'Reception' },
+  { roomNumber: '503', bedType: 'One Bed',  category: 'Presidential', view: 'Valley View',     rate: 30000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '504', bedType: 'Two Bed',  category: 'Presidential', view: 'Valley View',     rate: 30000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '505', bedType: 'One Bed',  category: 'Presidential', view: 'Valley View',     rate: 30000, owner: 'Reception', isPubliclyVisible: true },
 ];
 
 async function seed() {
