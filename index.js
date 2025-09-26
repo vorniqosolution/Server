@@ -14,6 +14,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const invoice = require("./routes/invoiceRoutes");
 const SettingRoutes = require("./routes/taxsettingRoutes");
 const reservationRoutes = require("./routes/reservationRoutes");
+const publicApiRoutes = require("./routes/publicApiRoutes");
 
 dotenv.config();
 const app = express();
@@ -40,6 +41,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to MongoDB
 connectDB();
+
+// Public API routes
+app.use('/api/public', publicApiRoutes);
 
 // CRM ROUTES (Admin, receptionist, accountant)
 app.use("/api/auth", authRoutes);
