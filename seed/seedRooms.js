@@ -5,22 +5,22 @@ const Room = require('../model/room');
 
 const rooms = [
   { roomNumber: '411', bedType: 'Two Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception', isPubliclyVisible: true },
-  { roomNumber: '605', bedType: 'One Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '605', bedType: 'Two Bed', category: 'Duluxe-Plus', view: 'Lobby Facing', rate: 28000, owner: 'Reception', isPubliclyVisible: true },
 
   { roomNumber: '305', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
   { roomNumber: '311', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
   { roomNumber: '312', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
-  { roomNumber: '313', bedType: 'One Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },  
-  { roomNumber: '409', bedType: 'One Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
-  { roomNumber: '410', bedType: 'One Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
-  { roomNumber: '508', bedType: 'Two Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
-  { roomNumber: '607', bedType: 'Two Bed',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },  
+  { roomNumber: '313', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },  
+  { roomNumber: '409', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '410', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '508', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '607', bedType: 'Studio',   category: 'Standard',     view: 'Lobby Facing',    rate: 14000, owner: 'Reception', isPubliclyVisible: true },  
 
   { roomNumber: '309', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
   { roomNumber: '407', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
   { roomNumber: '412', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
-  { roomNumber: '506', bedType: 'Two Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
-  { roomNumber: '509', bedType: 'Two Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '509', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
+  { roomNumber: '506', bedType: 'One Bed',  category: 'Deluxe',       view: 'Lobby Facing',    rate: 18000, owner: 'Reception', isPubliclyVisible: true },
 
   { roomNumber: '609', bedType: 'One Bed',  category: 'Deluxe',       view: 'Corner',          rate: 20000, owner: 'Reception', isPubliclyVisible: true },
 

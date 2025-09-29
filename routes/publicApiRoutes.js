@@ -19,13 +19,7 @@ const {
 
 router.get('/available-rooms', publicApiLimiter, getPublicAvailableRooms);
 
-router.get('/categories', publicApiLimiter, getPublicCategories);
-
-router.get('/categories/:categoryName', publicApiLimiter, getPublicRoomsByCategory);
-
-router.get('/:categoryName/details', publicApiLimiter, getPublicCategoryDetails);
-
-
+router.get('/category-details', publicApiLimiter, getPublicCategoryDetails); 
 
 router.post('/reservations',
     createReservationLimiter,
@@ -33,5 +27,10 @@ router.post('/reservations',
     handleValidationErrors,
     createPublicReservation
 );
+
+// router.get('/categories', publicApiLimiter, getPublicCategories);
+
+// router.get('/categories/:categoryName', publicApiLimiter, getPublicRoomsByCategory);
+
 
 module.exports = router;

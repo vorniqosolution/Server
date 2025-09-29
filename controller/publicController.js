@@ -4,22 +4,25 @@ const Guest = require("../model/guest");
 
 exports.getPublicAvailableRooms = async (req, res) => {
   try {
-    const { checkin, checkout } = req.query;
-    if (!checkin || !checkout)
+   const { checkin, checkout, guests } = req.query; 
+    const numberOfGuests = parseInt(guests, 10) || 1; // Default to 1 guest if not provided
+    if (!checkin || !checkout) {
       return res
         .status(400)
         .json({ message: "Check-in and checkout dates are required." });
+    }
     const startDate = new Date(`${checkin}T00:00:00.000Z`);
     const endDate = new Date(`${checkout}T00:00:00.000Z`);
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()))
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res
         .status(400)
         .json({ message: "Invalid date format. Use YYYY-MM-DD." });
-    if (endDate <= startDate)
+    }
+    if (endDate <= startDate) {
       return res
         .status(400)
         .json({ message: "Check-out must be after check-in." });
-
+    }
     const reservedRooms = await Reservation.find({
       status: { $in: ["reserved", "confirmed"] },
       startAt: { $lt: endDate },
@@ -32,26 +35,160 @@ exports.getPublicAvailableRooms = async (req, res) => {
     }).select("room");
     const unavailableRoomIds = [
       ...new Set([
-        ...reservedRooms.map((r) => r.room.toString()),
-        ...occupiedRooms.map((g) => g.room.toString()),
+        ...reservedRooms.map((r) => r.room),
+        ...occupiedRooms.map((g) => g.room),
       ]),
     ];
 
-    const availableRooms = await Room.find({
-      _id: { $nin: unavailableRoomIds },
-      status: "available",
-      isPubliclyVisible: true,
-    })
-      .select(
-        "publicName roomNumber rate images amenities category bedType view publicDescription adults cleaniness"
-      )
-      .sort({ rate: 1 });
+    // --- Aggregation Pipeline with additional fields ---
+    const groupedAvailableRooms = await Room.aggregate([
+      // Stage 1: Match available rooms
+      {
+        $match: {
+          _id: { $nin: unavailableRoomIds },
+          isPubliclyVisible: true,
+          status: { $ne: "maintenance" },
+          adults: { $gte: numberOfGuests },
+        },
+      },
+      
+      // Stage 2: Group by category and add all the requested fields
+      {
+        $group: {
+          _id: {
+            category: "$category",
+            bedType: "$bedType",
+          },
+          // --- Collect representative details for the group card ---
+          publicDescription: { $first: "$publicDescription" }, // desc
+          amenities: { $first: "$amenities" },                 // aminities
+          cleanliness: { $first: "$cleanliness" },              // clineniess (with typo fix)
+          category: { $first: "$category" },                    // category
+          bedType: { $first: "$bedType" },                      // bedtype
+          // --- Rate & Adults ---
+          startingRate: { $min: "$rate" },                      // room rate
+          minAdults: { $min: "$adults" },                       // adults
+          maxAdults: { $max: "$adults" },                       // adults
+          imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
+          // --- Collect the list of specific rooms ---
+          availableRooms: {
+            $push: {
+              _id: "$_id",
+              roomNumber: "$roomNumber",
+              view: "$view",
+              rate: "$rate",
+              adults: "$adults",
+              images: "$images",
+            },
+          },
+        },
+      },
+      
+      // Stage 3: Project the final, clean shape for the API response
+      {
+        $project: {
+          _id: 0,
+          publicName: { $concat: ["$_id.bedType", " - ", "$_id.category"] },
+          publicDescription: 1,
+          startingRate: 1,
+          amenities: 1,
+          cleanliness: 1,       // ✨ ADDED
+          category: 1,          // ✨ ADDED
+          bedType: 1,           // ✨ ADDED
+          adultsCapacity: {     // ✨ ADDED (better than a single "adults" value)
+             $cond: {
+              if: { $eq: ["$minAdults", "$maxAdults"] },
+              then: { $toString: "$minAdults" },
+              else: { $concat: [{ $toString: "$minAdults" }, "-", { $toString: "$maxAdults" }] },
+            },
+          },
+          imageUrl: 1,
+          availableRooms: 1,
+          availableCount: { $size: "$availableRooms" },
+        },
+      },
+      
+      // Stage 4: Sort
+      {
+        $sort: {
+          startingRate: 1,
+        },
+      },
+    ]);
 
-    res.status(200).json(availableRooms);
+    res.status(200).json(groupedAvailableRooms);
+
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Server error while checking availability." });
+    console.error("Error checking availability:", err);
+    res.status(500).json({ message: "Server error while checking availability." });
+  }
+};
+
+exports.getPublicCategoryDetails = async (req, res) => {
+  try {
+    const allCategoryDetails = await Room.aggregate([
+      // Stage 1: Match ALL publicly visible rooms.
+      {
+        $match: {
+          isPubliclyVisible: true,
+        },
+      },
+      
+      // Stage 2: Group by category and bed type to create the unique cards.
+      {
+        $group: {
+          _id: {
+            category: "$category",
+            bedType: "$bedType",
+          },
+          // Collect all the details needed for the UI card from the first room in each group.
+          publicDescription: { $first: "$publicDescription" },
+          startingRate: { $min: "$rate" }, // Show the lowest price for this type
+          amenities: { $first: "$amenities" },
+          cleanliness: { $first: "$cleanliness" },
+          category: { $first: "$category" },
+          bedType: { $first: "$bedType" },
+          minAdults: { $min: "$adults" },
+          maxAdults: { $max: "$adults" },
+          imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
+        },
+      },
+
+      // Stage 3: Project the final, clean shape for the API response.
+      {
+        $project: {
+          _id: 0,
+          publicName: { $concat: ["$_id.bedType", " - ", "$_id.category"] },
+          publicDescription: 1,
+          startingRate: 1,
+          amenities: 1,
+          cleanliness: 1,
+          category: 1,
+          bedType: 1,
+          adultsCapacity: {
+            $cond: {
+              if: { $eq: ["$minAdults", "$maxAdults"] },
+              then: { $toString: "$minAdults" },
+              else: { $concat: [{ $toString: "$minAdults" }, "-", { $toString: "$maxAdults" }] },
+            },
+          },
+          imageUrl: 1,
+          // Notice: availableRooms and availableCount have been completely removed.
+        },
+      },
+      
+      // Stage 4: Sort the results for a consistent display.
+      {
+        $sort: {
+          startingRate: 1,
+        },
+      },
+    ]);
+
+    res.status(200).json(allCategoryDetails);
+  } catch (err) {
+    console.error(`Error fetching all category details:`, err);
+    res.status(500).json({ message: "Server error while fetching category details." });
   }
 };
 
@@ -136,183 +273,102 @@ exports.createPublicReservation = async (req, res) => {
     }
 };
 
-exports.getPublicCategories = async (req, res) => {
-  try {
-    const categories = await Room.aggregate([
-      {
-        $match: {
-          isPubliclyVisible: true,
-        },
-      },
-      {
-        // The key change is here: group by a composite key.
-        $group: {
-          _id: {
-            category: "$category",
-            bedType: "$bedType",
-            rate: "$rate",
-          },
-          imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
-        },
-      },
-      {
-        // Reshape the data for the final output.
-        $project: {
-          _id: 0,
-          category: "$_id.category",
-          publicName: { $concat: ["$_id.bedType", " - ", "$_id.category"] },
-          rate: "$_id.rate",
-          imageUrl: 1,
-        },
-      },
-      {
-        // Sort first by category, then by the public name for a clean list.
-        $sort: {
-          category: 1,
-          publicName: 1,
-          rate: 1,
-        },
-      },
-    ]);
-    res.status(200).json(categories);
-  } catch (err) {
-    console.error("Error fetching public categories:", err);
-    res
-      .status(500)
-      .json({ message: "Server error while fetching categories." });
-  }
-};
 
-exports.getPublicRoomsByCategory = async (req, res) => {
-  try {
-    const { categoryName } = req.params;
 
-    if (!categoryName) {
-      return res.status(400).json({ message: "Category name is required." });
-    }
+// FOR NOW NOT USING THIS API
 
-    const rooms = await Room.aggregate([
-      {
-        $match: {
-          category: categoryName,
-          isPubliclyVisible: true,
-          status: "available",
-        },
-      },
-      {
-        $sort: {
-          roomNumber: 1,
-        },
-      },
-      {
-        $project: {
-          _id: 1,
-          roomNumber: 1,
-          bedType: 1,
-          category: 1,
-          view: 1,
-          rate: 1,
-          status: 1,
-          adults: 1,
-          publicDescription: 1,
-          amenities: 1,
-          images: 1,
-          cleaniness: 1,
-          publicName: { $concat: ["$bedType", " - ", "$category"] },
-        },
-      },
-    ]);
+//  exports.getPublicCategories = async (req, res) => {
+//   try {
+//     const categories = await Room.aggregate([
+//       {
+//         $match: {
+//           isPubliclyVisible: true,
+//         },
+//       },
+//       {
+//         // The key change is here: group by a composite key.
+//         $group: {
+//           _id: {
+//             category: "$category",
+//             bedType: "$bedType",
+//             rate: "$rate",
+//           },
+//           imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
+//         },
+//       },
+//       {
+//         // Reshape the data for the final output.
+//         $project: {
+//           _id: 0,
+//           category: "$_id.category",
+//           publicName: { $concat: ["$_id.bedType", " - ", "$_id.category"] },
+//           rate: "$_id.rate",
+//           imageUrl: 1,
+//         },
+//       },
+//       {
+//         // Sort first by category, then by the public name for a clean list.
+//         $sort: {
+//           category: 1,
+//           publicName: 1,
+//           rate: 1,
+//         },
+//       },
+//     ]);
+//     res.status(200).json(categories);
+//   } catch (err) {
+//     console.error("Error fetching public categories:", err);
+//     res
+//       .status(500)
+//       .json({ message: "Server error while fetching categories." });
+//   }
+// };
 
-    res.status(200).json(rooms);
-  } catch (err) {
-    console.error("Error fetching rooms by category:", err);
-    res.status(500).json({ message: "Server error while fetching rooms." });
-  }
-};
+// exports.getPublicRoomsByCategory = async (req, res) => {
+//   try {
+//     const { categoryName } = req.params;
 
-exports.getPublicCategoryDetails = async (req, res) => {
-  try {
-    const { categoryName } = req.params;
+//     if (!categoryName) {
+//       return res.status(400).json({ message: "Category name is required." });
+//     }
 
-    if (!categoryName) {
-      return res.status(400).json({ message: "Category name is required." });
-    }
-    const categorySubtypesWithRooms = await Room.aggregate([
-      {
-        $match: {
-          category: categoryName,
-          isPubliclyVisible: true,
-        },
-      },
-      {
-        $group: {
-          _id: {
-            category: "$category",
-            bedType: "$bedType",
-          },
-          startingRate: { $min: "$rate" },
-          amenities: { $first: "$amenities" },
-          publicDescription: { $first: "$publicDescription" },
-          imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
-          minAdults: { $min: "$adults" },
-          maxAdults: { $max: "$adults" },
-          cleanliness: { $first: "$cleanliness" },
-          availableRooms: {
-            $push: {
-              $cond: [
-                { $eq: ["$status", "available"] },
-                {
-                  _id: "$_id",
-                  roomNumber: "$roomNumber",
-                  view: "$view",
-                  category: "$category",
-                  bedType: "$bedType",
-                  rate: "$rate",
-                  adults: "$adults",
-                  amenities: "$amenities"
-                },
-                "$$REMOVE",
-              ],
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          publicName: { $concat: ["$_id.bedType", " - ", "$_id.category"] },
-          publicDescription: 1,
-          startingRate: 1,
-          amenities: 1,
-          imageUrl: 1,
-          cleanliness: 1,
-          adultsCapacity: {
-            $cond: {
-              if: { $eq: ["$minAdults", "$maxAdults"] },
-              then: { $toString: "$minAdults" },
-              else: {
-                $concat: [
-                  { $toString: "$minAdults" },
-                  "-",
-                  { $toString: "$maxAdults" },
-                ],
-              },
-            },
-          },
-          availableRooms: 1,
-          availableCount: { $size: "$availableRooms" },
-        },
-      },
-      {
-        $sort: {
-          startingRate: 1,
-        },
-      },
-    ]);
+//     const rooms = await Room.aggregate([
+//       {
+//         $match: {
+//           category: categoryName,
+//           isPubliclyVisible: true,
+//           status: "available",
+//         },
+//       },
+//       {
+//         $sort: {
+//           roomNumber: 1,
+//         },
+//       },
+//       {
+//         $project: {
+//           _id: 1,
+//           roomNumber: 1,
+//           bedType: 1,
+//           category: 1,
+//           view: 1,
+//           rate: 1,
+//           status: 1,
+//           adults: 1,
+//           publicDescription: 1,
+//           amenities: 1,
+//           images: 1,
+//           cleaniness: 1,
+//           publicName: { $concat: ["$bedType", " - ", "$category"] },
+//         },
+//       },
+//     ]);
 
-    res.status(200).json(categorySubtypesWithRooms);
-  } catch (err) {
-    console.error(`Error fetching subtypes for category ${req.params.categoryName}:`, err);
-    res.status(500).json({ message: "Server error while fetching category details." });
-  }
-};
+//     res.status(200).json(rooms);
+//   } catch (err) {
+//     console.error("Error fetching rooms by category:", err);
+//     res.status(500).json({ message: "Server error while fetching rooms." });
+//   }
+// };
+
+
