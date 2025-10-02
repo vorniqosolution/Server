@@ -1,18 +1,14 @@
  const express = require("express");
 const router = express.Router();
-
 const { 
     publicApiLimiter, 
     createReservationLimiter,
     reservationValidationRules,
     handleValidationErrors
 } = require('../middleware/securityMiddleware');
-
 const { 
     getPublicAvailableRooms,
-    getPublicCategories,
     createPublicReservation,
-    getPublicRoomsByCategory,
    getPublicCategoryDetails
 } = require("../controller/publicController");
 
@@ -27,10 +23,6 @@ router.post('/reservations',
     handleValidationErrors,
     createPublicReservation
 );
-
-// router.get('/categories', publicApiLimiter, getPublicCategories);
-
-// router.get('/categories/:categoryName', publicApiLimiter, getPublicRoomsByCategory);
 
 
 module.exports = router;

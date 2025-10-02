@@ -159,28 +159,6 @@ exports.createGuest = async (req, res) => {
         guest: guest._id,
       });
 
-    // await Invoice.create({
-    //   invoiceNumber: `HSQ-${Date.now()}`,
-    //   guest: guest._id,
-    //   items: [
-    //     {
-    //       description: `Room Rent (${room.category} - #${room.roomNumber})`,
-    //       quantity: nights,
-    //       unitPrice: rate,
-    //       total: roomTotal,
-    //     },
-    //   ],
-    //   subtotal: roomTotal,
-    //   discountAmount: standardDiscountAmount,
-    //   additionaldiscount: additionalDiscountAmount,
-    //   taxRate,
-    //   taxAmount: gstAmount,
-    //   grandTotal: totalRent,
-    //   dueDate: checkOut,
-    //   status: "pending",
-    //   createdBy: req.user.userId,
-    // });
-    // NEW: Upgraded invoice creation with permanent snapshot data
     await Invoice.create({
       invoiceNumber: `HSQ-${Date.now()}`,
       guest: guest._id, // Keep the link to the live guest record

@@ -1,45 +1,28 @@
-// config/multer.js
+// config/multer.js (NEW VERSION - HOLDS IN MEMORY FOR S3)
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '../uploads/rooms');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// 1. Use memoryStorage to hold the file as a buffer in RAM.
+//    This is the key change. We are no longer saving to disk.
+const storage = multer.memoryStorage();
 
-// Configure storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    // Generate unique filename
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'room-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-// File filter
+// 2. The file filter is still useful to validate the file type before processing.
 const fileFilter = (req, file, cb) => {
   // Accept images only
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
 
-  if (mimetype && extname) {
+  if (mimetype) {
     return cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'));
+    cb(new Error('Only image files are allowed (jpeg, jpg, png, gif, webp)'), false);
   }
 };
 
-// Create multer upload instance
+// 3. Create the multer instance with the new storage configuration.
 const upload = multer({
-  storage: storage,
+  storage: storage, // Use memoryStorage
   limits: {
-    fileSize: 10 * 1024 * 1024, // 5MB limit per file
+    fileSize: 10 * 1024 * 1024, // 10MB limit per file (you can keep your limit)
   },
   fileFilter: fileFilter
 });

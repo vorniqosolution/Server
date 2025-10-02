@@ -38,19 +38,18 @@ const roomSchema = new mongoose.Schema(
       enum: ["available", "reserved", "occupied", "maintenance"],
       default: "available",
     },
-    
+
     adults: {
-        type: Number,
-        required: true,
-        min: 1,
-        default: 2,
+      type: Number,
+      required: true,
+      min: 1,
+      default: 2,
     },
-    
+
     cleaniness: {
       type: String,
       trim: true,
-      default:
-        "Redefining standard living our rooms.",
+      default: "Redefining standard living our rooms.",
     },
 
     owner: {
@@ -58,26 +57,12 @@ const roomSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    images: [
-      {
-        filename: {
-          type: String,
-          required: true,
-        },
-        path: {
-          type: String,
-          required: true,
-        },
-        mimetype: {
-          type: String,
-          required: true,
-        },
-        size: {
-          type: Number,
-          required: true,
-        },
-      },
-    ],
+
+    images: {
+      type: [String],
+      default: [],
+    },
+
     amenities: {
       type: [String],
       default: [],

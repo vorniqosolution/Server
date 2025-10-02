@@ -1,6 +1,7 @@
 const Room = require("../model/room");
 const Reservation = require("../model/reservationmodel");
 const Guest = require("../model/guest");
+const { sendReservationConfirmation } = require('../service/reservationEmailService');
 
 exports.getPublicAvailableRooms = async (req, res) => {
   try {
@@ -192,7 +193,7 @@ exports.getPublicCategoryDetails = async (req, res) => {
   }
 };
 
-exports.createPublicReservation = async (req, res) => {
+exports.createPublicReservation = async (req, res) => { 
     const {
         fullName,
         address,
@@ -213,8 +214,16 @@ exports.createPublicReservation = async (req, res) => {
         const endAt = new Date(checkOutDate);
 
         const room = await Room.findById(roomId);
-        if (!room || room.status !== 'available' || !room.isPubliclyVisible) {
-            return res.status(409).json({ message: "Sorry, the selected room is no longer available." });
+
+        // Corrected initial checks, mirroring the CRM's logic
+        if (!room) {
+            return res.status(404).json({ message: "The selected room could not be found." });
+        }
+        if (!room.isPubliclyVisible) {
+            return res.status(403).json({ message: "This room is not available for public booking." });
+        }
+        if (room.status === 'maintenance') {
+            return res.status(409).json({ message: "This room is currently under maintenance and cannot be booked." });
         }
 
         const existingReservation = await Reservation.findOne({
@@ -256,7 +265,12 @@ exports.createPublicReservation = async (req, res) => {
         });
          console.log('System User ID from .env:', process.env.WEBSITE_SYSTEM_USER_ID);
 
-        await newReservation.save();
+        const savedReservation = await newReservation.save();
+
+        if (savedReservation) {
+            sendReservationConfirmation(savedReservation, room)
+                .catch(err => console.error("BACKGROUND EMAIL ERROR (Guest Confirmation):", err));
+        }
 
         res.status(201).json({
             success: true,
@@ -272,103 +286,3 @@ exports.createPublicReservation = async (req, res) => {
         res.status(500).json({ message: "An unexpected server error occurred." });
     }
 };
-
-
-
-// FOR NOW NOT USING THIS API
-
-//  exports.getPublicCategories = async (req, res) => {
-//   try {
-//     const categories = await Room.aggregate([
-//       {
-//         $match: {
-//           isPubliclyVisible: true,
-//         },
-//       },
-//       {
-//         // The key change is here: group by a composite key.
-//         $group: {
-//           _id: {
-//             category: "$category",
-//             bedType: "$bedType",
-//             rate: "$rate",
-//           },
-//           imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
-//         },
-//       },
-//       {
-//         // Reshape the data for the final output.
-//         $project: {
-//           _id: 0,
-//           category: "$_id.category",
-//           publicName: { $concat: ["$_id.bedType", " - ", "$_id.category"] },
-//           rate: "$_id.rate",
-//           imageUrl: 1,
-//         },
-//       },
-//       {
-//         // Sort first by category, then by the public name for a clean list.
-//         $sort: {
-//           category: 1,
-//           publicName: 1,
-//           rate: 1,
-//         },
-//       },
-//     ]);
-//     res.status(200).json(categories);
-//   } catch (err) {
-//     console.error("Error fetching public categories:", err);
-//     res
-//       .status(500)
-//       .json({ message: "Server error while fetching categories." });
-//   }
-// };
-
-// exports.getPublicRoomsByCategory = async (req, res) => {
-//   try {
-//     const { categoryName } = req.params;
-
-//     if (!categoryName) {
-//       return res.status(400).json({ message: "Category name is required." });
-//     }
-
-//     const rooms = await Room.aggregate([
-//       {
-//         $match: {
-//           category: categoryName,
-//           isPubliclyVisible: true,
-//           status: "available",
-//         },
-//       },
-//       {
-//         $sort: {
-//           roomNumber: 1,
-//         },
-//       },
-//       {
-//         $project: {
-//           _id: 1,
-//           roomNumber: 1,
-//           bedType: 1,
-//           category: 1,
-//           view: 1,
-//           rate: 1,
-//           status: 1,
-//           adults: 1,
-//           publicDescription: 1,
-//           amenities: 1,
-//           images: 1,
-//           cleaniness: 1,
-//           publicName: { $concat: ["$bedType", " - ", "$category"] },
-//         },
-//       },
-//     ]);
-
-//     res.status(200).json(rooms);
-//   } catch (err) {
-//     console.error("Error fetching rooms by category:", err);
-//     res.status(500).json({ message: "Server error while fetching rooms." });
-//   }
-// };
-
-
