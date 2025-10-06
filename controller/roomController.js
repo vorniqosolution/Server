@@ -169,104 +169,6 @@ exports.updateRoom = async (req, res) => {
   }
 };
 
-// exports.updateRoom = async (req, res) => {
-//   try {
-//     const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities, publicDescription, adults } = req.body;
-
-//     const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
-
-//     // Find the room first
-//     const room = await Room.findById(req.params.id);
-//     if (!room) {
-//       // Clean up any uploaded files
-//       if (req.files && req.files.length > 0) {
-//         for (const file of req.files) {
-//           try {
-//             await unlinkAsync(file.path);
-//           } catch (err) {
-//             console.error(`Failed to delete temp file ${file.path}:`, err);
-//           }
-//         }
-//       }
-//       return res.status(404).json({ message: "Room not found" });
-//     }
-
-//     // Build update object
-//     const updateData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults };
-//     if (status !== undefined) updateData.status = status;
-
-//     // Handle deleted images
-//     if (deletedImages) {
-//       let deletedImagesList = [];
-//       try {
-//         deletedImagesList = JSON.parse(deletedImages);
-//       } catch (parseErr) {
-//         console.error("Error parsing deletedImages:", parseErr);
-//         deletedImagesList = []; // Use empty array if parsing fails
-//       }
-      
-//       for (const filename of deletedImagesList) {
-//         try {
-//           // Delete file from filesystem
-//           const filePath = path.join(__dirname, '../uploads/rooms', filename);
-//           // Check if file exists before trying to delete
-//           if (fs.existsSync(filePath)) {
-//             await unlinkAsync(filePath);
-//             console.log(`Successfully deleted file: ${filename}`);
-//           } else {
-//             console.log(`File not found, skipping: ${filename}`);
-//           }
-          
-//           // Remove from room images array
-//           room.images = room.images.filter(img => img.filename !== filename);
-//         } catch (fileErr) {
-//           console.error(`Failed to delete file ${filename}:`, fileErr);
-//           // Continue even if file deletion fails
-//         }
-//       }
-//     }
-
-//     // Add new images
-//     if (req.files && req.files.length > 0) {
-//       const newImages = req.files.map(file => ({
-//         filename: file.filename,
-//         path: `/uploads/rooms/${file.filename}`,
-//         mimetype: file.mimetype,
-//         size: file.size
-//       }));
-      
-//       if (!room.images) {
-//         room.images = [];
-//       }
-//       room.images.push(...newImages);
-//     }
-
-//     // Update images in updateData
-//     updateData.images = room.images;
-
-//     const updated = await Room.findByIdAndUpdate(req.params.id, updateData, {
-//       new: true,
-//       runValidators: true,
-//       omitUndefined: true,
-//     });
-
-//     res.status(200).json({ message: "Room updated successfully", room: updated });
-//   } catch (err) {
-//     console.error("Room update error:", err);
-//     // Clean up any uploaded files on error
-//     if (req.files && req.files.length > 0) {
-//       for (const file of req.files) {
-//         try {
-//           await unlinkAsync(file.path);
-//         } catch (cleanupErr) {
-//           console.error(`Failed to clean up file ${file.path}:`, cleanupErr);
-//         }
-//       }
-//     }
-//     res.status(500).json({ message: "Server error", error: err.message });
-//   }
-// };
-
 exports.deleteRoom = async (req, res) => {
   try {
     const room = await Room.findById(req.params.id);
@@ -404,6 +306,60 @@ exports.getRoomTimeline = async (req, res) => {
  {
     console.error("getRoomTimeline Error:", err);
     res.status(500).json({ success: false, message: "Server error", error: err.message });
+  }
+};
+
+exports.getAvailableRoomsByCategory = async (req, res) => {
+  try {
+    const { checkin, checkout, category } = req.query;
+
+    // Validate that all required parameters are present
+    if (!checkin || !checkout || !category) {
+      return res.status(400).json({
+        success: false,
+        message: "Check-in date, check-out date, and a category are required.",
+      });
+    }
+
+    const checkinDate = new Date(checkin);
+    const checkoutDate = new Date(checkout);
+
+    // --- Find all rooms that are UNAVAILABLE during the requested dates ---
+    const conflictingReservations = await Reservation.find({
+      room: { $exists: true },
+      status: { $nin: ["Cancelled", "No Show", "Checked-out"] },
+      checkInDate: { $lt: checkoutDate },
+      checkOutDate: { $gt: checkinDate },
+    }).select("room");
+
+    const conflictingGuests = await Guest.find({
+      room: { $exists: true },
+      status: "Checked-in",
+      checkInDate: { $lt: checkoutDate },
+    }).select("room");
+
+    const reservedRoomIds = conflictingReservations.map(res => res.room);
+    const occupiedRoomIds = conflictingGuests.map(guest => guest.room);
+    const unavailableRoomIds = [...new Set([...reservedRoomIds, ...occupiedRoomIds])];
+
+    // --- Find rooms that match the category AND are NOT in the unavailable list ---
+    const availableRooms = await Room.find({
+      _id: { $nin: unavailableRoomIds },
+      category: category,
+    }).sort({ roomNumber: "asc" });
+
+    res.status(200).json({
+      success: true,
+      count: availableRooms.length,
+      rooms: availableRooms,
+    });
+
+  } catch (error) {
+    console.error("Error fetching available rooms by category:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching rooms.",
+    });
   }
 };
 
