@@ -128,23 +128,19 @@ exports.getPublicAvailableRooms = async (req, res) => {
 exports.getPublicCategoryDetails = async (req, res) => {
   try {
     const allCategoryDetails = await Room.aggregate([
-      // Stage 1: Match ALL publicly visible rooms.
       {
         $match: {
           isPubliclyVisible: true,
         },
       },
-      
-      // Stage 2: Group by category and bed type to create the unique cards.
       {
         $group: {
           _id: {
             category: "$category",
             bedType: "$bedType",
           },
-          // Collect all the details needed for the UI card from the first room in each group.
           publicDescription: { $first: "$publicDescription" },
-          startingRate: { $min: "$rate" }, // Show the lowest price for this type
+          startingRate: { $min: "$rate" },
           amenities: { $first: "$amenities" },
           cleanliness: { $first: "$cleanliness" },
           category: { $first: "$category" },
@@ -154,8 +150,6 @@ exports.getPublicCategoryDetails = async (req, res) => {
           imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
         },
       },
-
-      // Stage 3: Project the final, clean shape for the API response.
       {
         $project: {
           _id: 0,
@@ -174,11 +168,8 @@ exports.getPublicCategoryDetails = async (req, res) => {
             },
           },
           imageUrl: 1,
-          // Notice: availableRooms and availableCount have been completely removed.
         },
       },
-      
-      // Stage 4: Sort the results for a consistent display.
       {
         $sort: {
           startingRate: 1,
@@ -215,7 +206,6 @@ exports.createPublicReservation = async (req, res) => {
 
         const room = await Room.findById(roomId);
 
-        // Corrected initial checks, mirroring the CRM's logic
         if (!room) {
             return res.status(404).json({ message: "The selected room could not be found." });
         }

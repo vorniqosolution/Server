@@ -10,9 +10,6 @@ const s3 = require("../config/S3.js");
 const { PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
-
-
-
 const sendInvoiceEmail = async (
   pdfBuffer,
   invoiceNumber,
@@ -296,14 +293,6 @@ exports.deleteInvoice = async (req, res) => {
         .json({ success: false, message: "Invoice not found" });
     }
 
-    // Optional: Delete the associated PDF file from the server
-    // if (invoice.pdfPath) {
-    //   const fullPath = path.join(__dirname, "..", invoice.pdfPath);
-    //   if (fs.existsSync(fullPath)) {
-    //     fs.unlinkSync(fullPath);
-    //   }
-    // }
-
     res.status(200).json({
       success: true,
       message: "Invoice and associated PDF deleted successfully.",
@@ -329,15 +318,6 @@ exports.downloadInvoicePdf = async (req, res) => {
       });
     }
 
-    // const fullPath = path.join(__dirname, "..", invoice.pdfPath);
-    // if (!fs.existsSync(fullPath)) {
-    //   return res.status(404).json({
-    //     success: false,
-    //     message: "PDF file is missing from the server.",
-    //   });
-    // }
-
-    // Create the human-friendly filename for download
     const friendlyFilename = `Invoice - ${invoice.guest.fullName.replace(
       / /g,
       "_"
