@@ -1,13 +1,8 @@
-// config/multer.js (NEW VERSION - HOLDS IN MEMORY FOR S3)
 const multer = require('multer');
 
-// 1. Use memoryStorage to hold the file as a buffer in RAM.
-//    This is the key change. We are no longer saving to disk.
 const storage = multer.memoryStorage();
 
-// 2. The file filter is still useful to validate the file type before processing.
 const fileFilter = (req, file, cb) => {
-  // Accept images only
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
   const mimetype = allowedTypes.test(file.mimetype);
 
@@ -18,11 +13,10 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// 3. Create the multer instance with the new storage configuration.
 const upload = multer({
-  storage: storage, // Use memoryStorage
+  storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit per file (you can keep your limit)
+    fileSize: 10 * 1024 * 1024,
   },
   fileFilter: fileFilter
 });
