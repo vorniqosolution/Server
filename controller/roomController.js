@@ -15,7 +15,6 @@ exports.createRoom = async (req, res) => {
 
     const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
 
-
     if (await Room.findOne({ roomNumber })) {
       return res.status(400).json({ message: "Room number already exists" });
     }
@@ -24,26 +23,71 @@ exports.createRoom = async (req, res) => {
     if (status) roomData.status = status;
 
     if (req.files && req.files.length > 0) {
-      // Create an array of upload promises
       const uploadPromises = req.files.map(file => uploadImageToS3(file));
-      // Wait for all uploads to complete
       const imageUrls = await Promise.all(uploadPromises);
-      roomData.images = imageUrls; // Assign the array of S3 URLs
+      roomData.images = imageUrls;
     }
-
-    // if (req.files && req.files.length > 0) {
-    //   roomData.images = req.files.map((file) => ({
-    //     filename: file.filename,
-    //     path: `/uploads/rooms/${file.filename}`,
-    //     mimetype: file.mimetype,
-    //     size: file.size,
-    //   }));
-    // }
-
     const room = await Room.create(roomData);
     res.status(201).json({ message: "Room created successfully", room });
   } catch (err) {
     console.error("Error creating room:", err);
+    res.status(500).json({ message: "Server error", error: err.message });
+  }
+};
+
+exports.updateRoom = async (req, res) => {
+  try {
+    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities, publicDescription, adults } = req.body;
+    const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
+
+    const room = await Room.findById(req.params.id);
+    if (!room) {
+      return res.status(404).json({ message: "Room not found" });
+    }
+
+    const updateData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults };
+    if (status !== undefined) updateData.status = status;
+
+    // --- Start of Corrected Image Handling Logic ---
+    let finalImageArray = room.images || [];
+
+    // 1. Handle Deletions
+    if (deletedImages) {
+      const imagesToDelete = JSON.parse(deletedImages);
+      if (Array.isArray(imagesToDelete) && imagesToDelete.length > 0) {
+        // Use your helper to delete from S3
+        const deletePromises = imagesToDelete.map(url => deleteImageFromS3(url));
+        await Promise.all(deletePromises);
+        
+        // Filter the array to remove the deleted images
+        finalImageArray = finalImageArray.filter(imgUrl => !imagesToDelete.includes(imgUrl));
+      }
+    }
+
+    // 2. Handle Additions
+    if (req.files && req.files.length > 0) {
+      // Use your helper to upload to S3
+      const uploadPromises = req.files.map(file => uploadImageToS3(file));
+      const newImageUrls = await Promise.all(uploadPromises);
+      
+      // Add the new image URLs to the array
+      finalImageArray.push(...newImageUrls);
+    }
+
+    // 3. Assign the final, correct array to updateData
+    updateData.images = finalImageArray;
+    // --- End of Corrected Image Handling Logic ---
+    
+    const updated = await Room.findByIdAndUpdate(req.params.id, updateData, {
+      new: true,
+      runValidators: true,
+      omitUndefined: true,
+    });
+
+    res.status(200).json({ message: "Room updated successfully", room: updated });
+  } catch (err) {
+    console.error("Room update error:", err);
+    // No local files to clean up
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
@@ -112,59 +156,6 @@ exports.getRoomById = async (req, res) => {
     }
     res.status(200).json({ room });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-};
-
-exports.updateRoom = async (req, res) => {
-  try {
-    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities, publicDescription, adults } = req.body;
-    const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
-
-    const room = await Room.findById(req.params.id);
-    if (!room) {
-      return res.status(404).json({ message: "Room not found" });
-    }
-
-    const updateData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults };
-    if (status !== undefined) updateData.status = status;
-
-    let currentImages = room.images || [];
-
-    // --- S3 DELETE LOGIC ---
-    if (deletedImages) {
-      // Frontend should send a JSON string array of full image URLs to delete
-      const imagesToDelete = JSON.parse(deletedImages);
-      if (Array.isArray(imagesToDelete) && imagesToDelete.length > 0) {
-        // Create an array of deletion promises
-        const deletePromises = imagesToDelete.map(url => deleteImageFromS3(url));
-        await Promise.all(deletePromises);
-        // Filter out the deleted images from our current list
-        currentImages = currentImages.filter(imgUrl => !imagesToDelete.includes(imgUrl));
-      }
-    }
-    // --- END S3 DELETE LOGIC ---
-
-    // --- S3 ADD NEW IMAGES LOGIC ---
-    if (req.files && req.files.length > 0) {
-      const uploadPromises = req.files.map(file => uploadImageToS3(file));
-      const newImageUrls = await Promise.all(uploadPromises);
-      currentImages.push(...newImageUrls);
-    }
-    // --- END S3 ADD LOGIC ---
-
-    updateData.images = currentImages;
-
-    const updated = await Room.findByIdAndUpdate(req.params.id, updateData, {
-      new: true,
-      runValidators: true,
-      omitUndefined: true,
-    });
-
-    res.status(200).json({ message: "Room updated successfully", room: updated });
-  } catch (err) {
-    console.error("Room update error:", err);
-    // No local files to clean up
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
