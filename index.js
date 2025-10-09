@@ -53,6 +53,8 @@ app.use("/api/invoice", invoice);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reservation", reservationRoutes);
 app.use("/api/tax", SettingRoutes);
+
+
 // testing purpose
 app.get("/test", (req, res) => {
   return res.json({ message: "test api" });
@@ -60,5 +62,5 @@ app.get("/test", (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () =>
-  console.log(`Server running on port ${PORT} and connected to ${process.env.MONGO_URI}🤷‍♀️`)
+  console.log(`Server running on port ${PORT} 👋`)
 );
