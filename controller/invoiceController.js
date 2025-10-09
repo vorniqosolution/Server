@@ -45,7 +45,6 @@ const sendInvoiceEmail = async (
   await transporter.sendMail(mailOptions);
 };
 
-
 const generatePdfFromHtml = async (htmlContent) => {
   const browser = await puppeteer.launch({
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
