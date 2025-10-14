@@ -127,60 +127,64 @@ exports.getPublicAvailableRooms = async (req, res) => {
 
 exports.getPublicCategoryDetails = async (req, res) => {
   try {
-    const allCategoryDetails = await Room.aggregate([
-      {
+    const roomsGroupedByCategory = await Room.aggregate([
+      { 
         $match: {
           isPubliclyVisible: true,
         },
       },
       {
-        $group: {
-          _id: {
-            category: "$category",
-            bedType: "$bedType",
-          },
-          publicDescription: { $first: "$publicDescription" },
-          startingRate: { $min: "$rate" },
-          amenities: { $first: "$amenities" },
-          cleanliness: { $first: "$cleanliness" },
-          category: { $first: "$category" },
-          bedType: { $first: "$bedType" },
-          minAdults: { $min: "$adults" },
-          maxAdults: { $max: "$adults" },
-          imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
-        },
-      },
-      {
-        $project: {
-          _id: 0,
-          publicName: { $concat: ["$_id.bedType", " - ", "$_id.category"] },
-          publicDescription: 1,
-          startingRate: 1,
-          amenities: 1,
-          cleanliness: 1,
-          category: 1,
-          bedType: 1,
-          adultsCapacity: {
-            $cond: {
-              if: { $eq: ["$minAdults", "$maxAdults"] },
-              then: { $toString: "$minAdults" },
-              else: { $concat: [{ $toString: "$minAdults" }, "-", { $toString: "$maxAdults" }] },
-            },
-          },
-          imageUrl: 1,
-        },
-      },
-      {
+        
         $sort: {
-          startingRate: 1,
+          category: 1,  
+          rate: 1,       
+          // roomNumber: 1  
+        }
+      },
+      {
+        
+        $group: {
+          _id: "$category",
+          rooms: { $push: "$$ROOT" },
         },
       },
+      {
+        
+        $project: {
+          _id: 0, 
+          categoryName: "$_id", 
+          rooms: { 
+            $map: { 
+              input: "$rooms",
+              as: "room",
+              in: {
+                id: "$$room._id",
+                rate: "$$room.rate",
+                images: "$$room.images",
+                publicName: "$$room.publicName",
+                publicDescription: "$$room.publicDescription"
+                // roomNumber: "$$room.roomNumber",
+                // bedType: "$$room.bedType",
+                // view: "$$room.view",
+                // status: "$$room.status",
+                // adults: "$$room.adults",
+                // amenities: "$$room.amenities",
+              }
+            }
+          }
+        },
+      },
+      {
+          $sort: {
+              categoryName: 1
+          }
+      }
     ]);
 
-    res.status(200).json(allCategoryDetails);
+    res.status(200).json(roomsGroupedByCategory);
   } catch (err) {
-    console.error(`Error fetching all category details:`, err);
-    res.status(500).json({ message: "Server error while fetching category details." });
+    console.error(`Error fetching public rooms by category:`, err);
+    res.status(500).json({ message: "Server error while fetching room details." });
   }
 };
 
