@@ -193,178 +193,157 @@ exports.cancelReservation = async (req, res) => {
   }
 };
 
-exports.GetAllReservedRoomWithDate = async (req, res) => {
+exports.deleteReservation = async (req, res) => {
   try {
-    const { day, month, year } = req.query;
+    const reservationId = req.params.id;
 
-    if (!month || !year) {
-      return res.status(400).json({
-        success: false,
-        message: "Month and year are required",
-      });
-    }
-    const parsedMonth = Number(month);
-    const parsedYear = Number(year);
-    const parsedDay = day ? Number(day) : null;
-    const pipeline = [
-      {
-        $match: {
-          status: "reserved",
-        },
-      },
-      {
-        $addFields: {
-          bookingMonth: { $month: "$startAt" },
-          bookingYear: { $year: "$startAt" },
-          bookingDay: { $dayOfMonth: "$startAt" },
-        },
-      },
-      {
-        $match: {
-          bookingMonth: parsedMonth,
-          bookingYear: parsedYear,
-          ...(parsedDay && { bookingDay: parsedDay }),
-        },
-      },
-      {
-        $lookup: {
-          from: "rooms", // collection name in MongoDB
-          localField: "room",
-          foreignField: "_id",
-          as: "roomData",
-        },
-      },
-      { $unwind: "$roomData" },
-      {
-        $addFields: {
-          daysBooked: {
-            $dateDiff: {
-              startDate: "$startAt",
-              endDate: "$endAt",
-              unit: "day",
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 1,
-          fullName: 1,
-          roomNumber: "$roomData.roomNumber",
-          roomStatus: "$roomData.status",
-          daysBooked: 1,
-        },
-      },
-    ];
-
-    const result = await Reservation.aggregate(pipeline);
-    console.log("Result", result);
-    if (result.length === 0) {
-      return res.json({ message: "No reservation" });
+    // 1. Find the reservation to check its status
+    const reservationToDelete = await Reservation.findById(reservationId);
+    if (!reservationToDelete) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Reservation not found" });
     }
 
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
+    // 2. Prevent deletion of reservations that have been checked-in
+    // Deletion should only be allowed for 'reserved' or 'cancelled' statuses.
+    if (
+      reservationToDelete.status === "checked-in" ||
+      reservationToDelete.status === "checked-out"
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: `Cannot delete a reservation that is currently '${reservationToDelete.status}'. Please cancel it first if it is 'reserved'.`,
+        });
+    }
+
+    // 3. If the reservation was 'reserved' and is now being deleted, 
+    // we should make sure the associated room is set back to 'available'.
+    if (reservationToDelete.status === "reserved") {
+      const room = await Room.findById(reservationToDelete.room);
+      if (room && room.status !== "maintenance") {
+        room.status = "available";
+        await room.save();
+      }
+    }
+
+    // 4. Perform the deletion
+    const result = await Reservation.findByIdAndDelete(reservationId);
+    
+    // This check is slightly redundant since we already checked in step 1, 
+    // but is good practice to ensure the operation was successful.
+    if (!result) {
+        return res
+            .status(404)
+            .json({ success: false, message: "Reservation not found after check" });
+    }
+
+    // 5. Success response
+    return res.status(200).json({
+      success: true,
+      message: "Reservation permanently deleted.",
+      deletedId: reservationId,
     });
+  } catch (err) {
+    console.error("deleteReservation Error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
 
-exports.GetAllOccupiedRoomsWithDate = async (req, res) => {
+exports.getReservationsCreatedOnDate = async (req, res) => {
   try {
-    const { day, month, year } = req.query;
-    if (!month || !year) {
-      return res.status(400).json({
-        success: false,
-        message: "Month and year are required",
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Date is required. Format: YYYY-MM-DD" 
       });
     }
-    const parsedMonth = Number(month);
-    const parsedYear = Number(year);
-    const parsedDay = day ? Number(day) : null;
 
-    const pipeline = [
-      {
-        $match: {
-          status: "occupied",
-        },
-      },
-      {
-        // Agar checkOutAt nahi hai to stayDuration ka use karke calculate karo
-        $addFields: {
-          expectedCheckOutAt: {
-            $cond: [
-              { $ifNull: ["$checkOutAt", false] },
-              "$checkOutAt",
-              {
-                $add: [
-                  "$checkInAt",
-                  { $multiply: ["$stayDuration", 24 * 60 * 60 * 1000] },
-                ],
-              },
-            ],
-          },
-        },
-      },
-      {
-        // Month/Year/Day extract for filtering
-        $addFields: {
-          bookingMonth: { $month: "$checkInAt" },
-          bookingYear: { $year: "$checkInAt" },
-          bookingDay: { $dayOfMonth: "$checkInAt" },
-        },
-      },
-      {
-        $match: {
-          bookingMonth: parsedMonth,
-          bookingYear: parsedYear,
-          ...(parsedDay && { bookingDay: parsedDay }),
-        },
-      },
-      {
-        $lookup: {
-          from: "rooms",
-          localField: "room",
-          foreignField: "_id",
-          as: "roomData",
-        },
-      },
-      { $unwind: "$roomData" },
-      {
-        $addFields: {
-          daysStayed: {
-            $dateDiff: {
-              startDate: "$checkInAt",
-              endDate: "$expectedCheckOutAt",
-              unit: "day",
-            },
-          },
-        },
-      },
-      {
-        $project: {
-          _id: 1,
-          fullName: 1,
-          roomNumber: "$roomData.roomNumber",
-          roomStatus: "$roomData.status",
-          checkInAt: 1,
-          expectedCheckOutAt: 1,
-          daysStayed: 1,
-        },
-      },
-    ];
+    // --- Robust Date Validation ---
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (!m) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Please use YYYY-MM-DD",
+      });
+    }
+    const [_, y, mo, d] = m.map(Number);
+    const dayStart = new Date(Date.UTC(y, mo - 1, d, 0, 0, 0, 0));
+    const dayEnd = new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999));
 
-    const result = await Guest.aggregate(pipeline);
+    if (dayStart.getUTCFullYear() !== y || dayStart.getUTCMonth() + 1 !== mo || dayStart.getUTCDate() !== d) {
+      return res.status(400).json({ success: false, message: "Invalid calendar date" });
+    }
+    // --- End Validation ---
 
-    res.json({ success: true, data: result });
-  } catch (error) {
-    console.error("Error fetching occupied rooms:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
+    const reservations = await Reservation.find({
+      createdAt: { $gte: dayStart, $lte: dayEnd }
+    })
+    .populate("room", "roomNumber category")
+    .populate("createdBy", "name")
+    .sort({ createdAt: -1 })
+    .lean();
+
+    const formattedReservations = reservations.map(reservation => {
+      const checkInDate = new Date(reservation.startAt);
+      const checkOutDate = new Date(reservation.endAt);
+      const totalDays = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
+      
+      return {
+        _id: reservation._id,
+        fullName: reservation.fullName,
+        phone: reservation.phone,
+        status: reservation.status,
+        source: reservation.source,
+        roomNumber: reservation.room?.roomNumber,
+        checkIn: reservation.startAt,
+        checkOut: reservation.endAt,
+        totalDays,
+        createdBy: reservation.createdBy?.name || "System",
+        createdAt: reservation.createdAt,
+      };
+    });
+
+    // --- MODIFIED SUMMARY BLOCK ---
+    // This is a more efficient way to calculate the summary in one pass.
+    const byStatusSummary = formattedReservations.reduce((acc, reservation) => {
+      const status = reservation.status;
+      // If the status key exists, increment it. Otherwise, set it to 1.
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    }, { 
+      // Initialize all possible statuses to 0. 
+      // This ensures the frontend always gets these keys, even if the count is zero.
+      'reserved': 0, 
+      'checked-in': 0, 
+      'checked-out': 0, 
+      'cancelled': 0 
+    });
+
+    const summary = {
+      totalCreated: formattedReservations.length,
+      byStatus: byStatusSummary
+    };
+
+    res.status(200).json({
+      success: true,
+      date: date,
+      summary: summary,
+      data: formattedReservations
+    });
+
+  } catch (err) {
+    console.error("Error in getReservationsCreatedOnDate:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error", 
+      error: err.message 
     });
   }
 };

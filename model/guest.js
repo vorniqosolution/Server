@@ -55,6 +55,7 @@ const guestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// These functions are written for the revenue anlytics purpose do not delete these functions:
 guestSchema.statics.fetchRevenueByPeriod = async function ({
   period,
   year,

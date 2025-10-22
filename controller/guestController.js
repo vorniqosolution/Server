@@ -366,6 +366,136 @@ exports.deleteGuest = async (req, res) => {
   }
 };
 
+exports.UpdateGuestById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fullName, email, phone, cnic, paymentMethod, address } = req.body;
+
+    console.log("Received data:", {
+      fullName,
+      email,
+      phone,
+      cnic,
+      paymentMethod,
+      address,
+    });
+    console.log("Guest ID:", id);
+
+    const updatedGuest = await Guest.findByIdAndUpdate(
+      id,
+      {
+        fullName: fullName,
+        email: email,
+        phone: phone,
+        cnic: cnic,
+        paymentMethod: paymentMethod,
+        address: address,
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedGuest) {
+      return res.status(404).json({ message: "Guest not found" });
+    }
+
+    return res.status(200).json({
+      message: "Guest updated successfully",
+      data: updatedGuest,
+    });
+  } catch (error) {
+    console.error("UpdateGuestById Error:", error);
+    return res.status(500).json({
+      message: "Internal server error while updating guest",
+      error: error.message,
+    });
+  }
+};
+
+exports.getGuestActivityByDate = async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Date is required. Format: YYYY-MM-DD" 
+      });
+    }
+
+    // --- Robust Date Validation ---
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (!m) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Please use YYYY-MM-DD",
+      });
+    }
+    const [_, y, mo, d] = m.map(Number);
+    const dayStart = new Date(Date.UTC(y, mo - 1, d, 0, 0, 0, 0));
+    const dayEnd = new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999));
+
+    if (dayStart.getUTCFullYear() !== y || dayStart.getUTCMonth() + 1 !== mo || dayStart.getUTCDate() !== d) {
+      return res.status(400).json({ success: false, message: "Invalid calendar date" });
+    }
+    // --- End Validation ---
+
+    // Define the two queries we need to run
+    const checkInQuery = Guest.find({
+      checkInAt: { $gte: dayStart, $lte: dayEnd }
+    })
+    .populate('room', 'roomNumber category')
+    .populate('createdBy', 'name')
+    .lean(); // Use .lean() for performance
+
+    const checkOutQuery = Guest.find({
+      status: 'checked-out', // IMPORTANT: Only count confirmed check-outs
+      checkOutAt: { $gte: dayStart, $lte: dayEnd }
+    })
+    .populate('room', 'roomNumber category')
+    .populate('createdBy', 'name')
+    .lean();
+
+    // Run both queries in parallel for maximum efficiency
+    const [checkedInGuests, checkedOutGuests] = await Promise.all([
+      checkInQuery.exec(),
+      checkOutQuery.exec()
+    ]);
+
+    // Simple formatter to create a consistent response shape
+    const formatGuest = (guest) => ({
+      _id: guest._id,
+      fullName: guest.fullName,
+      phone: guest.phone,
+      cnic: guest.cnic,
+      roomNumber: guest.room?.roomNumber,
+      checkInAt: guest.checkInAt,
+      checkOutAt: guest.checkOutAt,
+      createdBy: guest.createdBy?.name || "System"
+    });
+
+    res.status(200).json({
+      success: true,
+      date: date,
+      summary: {
+        totalCheckIns: checkedInGuests.length,
+        totalCheckOuts: checkedOutGuests.length,
+      },
+      data: {
+        checkIns: checkedInGuests.map(formatGuest),
+        checkOuts: checkedOutGuests.map(formatGuest),
+      }
+    });
+
+  } catch (err) {
+    console.error("Error in getGuestActivityByDate:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error", 
+      error: err.message 
+    });
+  }
+};
+
 exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
   try {
     const { category } = req.query;
@@ -415,47 +545,6 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
   }
 };
 
-exports.UpdateGuestById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { fullName, email, phone, cnic, paymentMethod, address } = req.body;
 
-    console.log("Received data:", {
-      fullName,
-      email,
-      phone,
-      cnic,
-      paymentMethod,
-      address,
-    });
-    console.log("Guest ID:", id);
 
-    const updatedGuest = await Guest.findByIdAndUpdate(
-      id,
-      {
-        fullName: fullName,
-        email: email,
-        phone: phone,
-        cnic: cnic,
-        paymentMethod: paymentMethod,
-        address: address,
-      },
-      { new: true, runValidators: true }
-    );
 
-    if (!updatedGuest) {
-      return res.status(404).json({ message: "Guest not found" });
-    }
-
-    return res.status(200).json({
-      message: "Guest updated successfully",
-      data: updatedGuest,
-    });
-  } catch (error) {
-    console.error("UpdateGuestById Error:", error);
-    return res.status(500).json({
-      message: "Internal server error while updating guest",
-      error: error.message,
-    });
-  }
-};

@@ -5,10 +5,11 @@ const {
   getReservations,
   getReservationById,
   cancelReservation,
-  GetAllReservedRoomWithDate,
-  GetAllOccupiedRoomsWithDate,
+  getReservationsCreatedOnDate,
+  deleteReservation
 } = require("../controller/reservationcontroller");
 const authenticate = require("../middleware/authMiddleware");
+const authorize = require("../middleware/adminMiddleware");
 
 // Protect all guest routes
 router.use(authenticate);
@@ -17,7 +18,8 @@ router.post("/create-reservation", createReservation);
 router.get("/get-reservations", getReservations);
 router.get("/get-reservation/:id", getReservationById);
 router.delete("/cancel-reservation/:id/cancel", cancelReservation);
-router.get("/Get-All-ReservedRoom-With-Date", GetAllReservedRoomWithDate);
-router.get("/Get-All-OccupiedRoom-With-Date", GetAllOccupiedRoomsWithDate);
+router.delete("/delete-reservation/:id/delete", authorize('admin'), deleteReservation);
+router.get("/calendar-view", getReservationsCreatedOnDate);
+
 
 module.exports = router;
