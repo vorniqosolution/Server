@@ -32,7 +32,7 @@ const reservationSchema = new mongoose.Schema(
     specialRequest: { type: String, trim: true },
     paymentMethod: {
       type: String,
-      enum: ["Cash", "Card", "Online", "Pay At Hotel"],
+      enum: ["Cash", "Card", "Online", "PayAtHotel"],
     },
     promoCode: { type: String, trim: true },
     createdBy: {
