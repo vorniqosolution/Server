@@ -13,7 +13,7 @@ const seedAdmin = async () => {
       process.exit();
     }
 
-    const hashedPassword = bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+    const hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
 
     // Create the admin user
     const adminUser = new User({
