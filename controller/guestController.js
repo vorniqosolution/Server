@@ -9,6 +9,221 @@ const Reservation = require("../model/reservationmodel");
 const { isValid } = require("date-fns");
 const dateFnsTz = require("date-fns-tz");
 
+// exports.createGuest = async (req, res) => {
+//   try {
+//     let {
+//       fullName,
+//       address,
+//       phone,
+//       cnic,
+//       email,
+//       roomNumber,
+//       checkInDate,
+//       checkOutDate,
+//       paymentMethod,
+//       applyDiscount = false,
+//       additionaldiscount = 0,
+//       reservationId,
+//     } = req.body;
+
+//     if (!checkInDate || !checkOutDate) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Check-in and check-out dates are required.",
+//       });
+//     }
+
+//     // This format explicitly tells the Date constructor to parse in UTC (the 'Z' at the end).
+//     // This is guaranteed to be timezone-independent and works reliably everywhere.
+//     const checkIn = new Date(`${checkInDate}T00:00:00.000Z`);
+//     const checkOut = new Date(`${checkOutDate}T00:00:00.000Z`);
+
+//     // Check if the dates are valid after parsing
+//     if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid date format. Please use YYYY-MM-DD.",
+//       });
+//     }
+
+//     if (checkOut <= checkIn) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Check-out date must be after the check-in date.",
+//       });
+//     }
+
+//     // 2. ENFORCE "TODAY ONLY" RULE
+//     const today = new Date();
+
+//     today.setUTCHours(0, 0, 0, 0);
+
+//     if (checkIn.getTime() !== today.getTime()) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Guest check-in must be for today's date. For future bookings, please create a reservation.",
+//       });
+//     }
+
+//     // 3. FIND ROOM AND CHECK CURRENT AVAILABILITY
+//     const room = await Room.findOne({ roomNumber });
+//     if (!room)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Room not found" });
+//     if (room.status === "occupied" || room.status === "maintenance") {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: `Room is currently ${room.status}.` });
+//     }
+
+//     const blockingReservation = await Reservation.findOne({
+//       room: room._id,
+//       status: { $in: ["reserved", "confirmed"] },
+//       startAt: { $lte: today },
+//       endAt: { $gt: today },
+//     });
+
+//     if (
+//       blockingReservation &&
+//       (!reservationId || blockingReservation._id.toString() !== reservationId)
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message:
+//           "Room is reserved for another guest today. Please check in via the reservation.",
+//       });
+//     }
+
+//     // --- FROM HERE, THE REST OF THE LOGIC IS UNCHANGED AND CORRECT ---
+//     const nights = Math.ceil(
+//       (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
+//     );
+//     const settings = await Setting.findById("global_settings").lean();
+//     const taxRate = Number(settings?.taxRate ?? 0);
+//     const rate = Number(room.rate) || 0;
+//     const roomTotal = rate * nights;
+//     console.log("//Total Room//", roomTotal);
+//     const additionalDiscountAmount = Math.min(
+//       Math.max(0, Number(additionaldiscount) || 0),
+//       roomTotal
+//     );
+//     let stdPct = 0;
+//     let discountTitle = null;
+//     if (applyDiscount) {
+//       const validDiscount = await Discount.findOne({
+//         startDate: { $lte: today },
+//         endDate: { $gte: today },
+//       });
+//       if (!validDiscount)
+//         return res.status(400).json({
+//           success: false,
+//           message: "No valid discount is available for today.",
+//         });
+//       stdPct = Number(validDiscount.percentage) || 0;
+//       discountTitle = validDiscount.title;
+//     }
+//     const standardDiscountAmount = Math.round(roomTotal * (stdPct / 100));
+//     const subtotalBeforeTax = Math.max(
+//       0,
+//       roomTotal - standardDiscountAmount - additionalDiscountAmount
+//     );
+//     const gstAmount = Math.round((subtotalBeforeTax * taxRate) / 100);
+//     const totalRent = subtotalBeforeTax + gstAmount;
+
+//     const guest = await Guest.create({
+//       fullName,
+//       address,
+//       phone,
+//       cnic,
+//       email,
+//       room: room._id,
+//       checkInAt: checkIn,
+//       checkOutAt: checkOut,
+//       stayDuration: nights,
+//       paymentMethod,
+//       applyDiscount,
+//       discountTitle,
+//       totalRent,
+//       gst: gstAmount,
+//       additionaldiscount: additionalDiscountAmount,
+//       createdBy: req.user.userId,
+//     });
+
+//     room.status = "occupied";
+//     await room.save();
+//     if (reservationId)
+//       await Reservation.findByIdAndUpdate(reservationId, {
+//         status: "checked-in",
+//         guest: guest._id,
+//       });
+
+//     await Invoice.create({
+//       invoiceNumber: `HSQ-${Date.now()}`,
+//       guest: guest._id, // Keep the link to the live guest record
+//       items: [
+//         {
+//           description: `Room Rent (${room.category} - #${room.roomNumber})`,
+//           quantity: nights,
+//           unitPrice: rate,
+//           total: roomTotal,
+//         },
+//       ],
+//       subtotal: roomTotal,
+//       discountAmount: standardDiscountAmount,
+//       additionaldiscount: additionalDiscountAmount,
+//       taxRate,
+//       taxAmount: gstAmount,
+//       grandTotal: totalRent,
+//       dueDate: checkOut,
+//       status: "pending",
+//       createdBy: req.user.userId,
+
+//       // Save the permanent snapshot data
+//       checkInAt: guest.checkInAt,
+//       guestDetails: {
+//         fullName: guest.fullName,
+//         phone: guest.phone,
+//         cnic: guest.cnic,
+//       },
+//       roomDetails: {
+//         roomNumber: room.roomNumber,
+//         category: room.category,
+//       },
+//     });
+//     try {
+//       await axios.post(
+//         `${process.env.API_BASE_URL}/api/inventory/checkin`,
+//         {
+//           roomId: room._id,
+//           guestId: guest._id,
+//           source: reservationId ? "reservation" : "walkin",
+//         },
+//         {
+//           headers: {
+//             Cookie: req.headers.cookie,
+//             Authorization: req.headers.authorization,
+//           },
+//         }
+//       );
+//     } catch (invErr) {
+//       console.error("Inventory check-in failed:", invErr?.message);
+//     }
+
+//     return res.status(201).json({
+//       success: true,
+//       message: "Guest checked in successfully",
+//       data: { guest },
+//     });
+//   } catch (err) {
+//     console.error("createGuest Error:", err);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Server error", error: err.message });
+//   }
+// };
+
 exports.createGuest = async (req, res) => {
   try {
     let {
@@ -33,9 +248,13 @@ exports.createGuest = async (req, res) => {
       });
     }
 
-    // This format explicitly tells the Date constructor to parse in UTC (the 'Z' at the end).
-    // This is guaranteed to be timezone-independent and works reliably everywhere.
-    const checkIn = new Date(`${checkInDate}T00:00:00.000Z`);
+    // 1. FIX: CAPTURE THE ACTUAL CHECK-IN MOMENT AND TIME STRING
+    const checkInMoment = new Date();
+    const checkInTimeStr = checkInMoment.toTimeString().slice(0, 5);
+
+    // This format ensures the saved Date object includes the exact time of check-in
+    // instead of midnight UTC, fixing the checkInTime calculation.
+    const checkIn = new Date(`${checkInDate}T${checkInTimeStr}:00.000`);
     const checkOut = new Date(`${checkOutDate}T00:00:00.000Z`);
 
     // Check if the dates are valid after parsing
@@ -55,10 +274,13 @@ exports.createGuest = async (req, res) => {
 
     // 2. ENFORCE "TODAY ONLY" RULE
     const today = new Date();
+    // Compare only the date part for today's rule
+    const checkInDay = new Date(checkInDate);
 
     today.setUTCHours(0, 0, 0, 0);
+    checkInDay.setUTCHours(0, 0, 0, 0);
 
-    if (checkIn.getTime() !== today.getTime()) {
+    if (checkInDay.getTime() !== today.getTime()) {
       return res.status(400).json({
         success: false,
         message:
@@ -81,8 +303,8 @@ exports.createGuest = async (req, res) => {
     const blockingReservation = await Reservation.findOne({
       room: room._id,
       status: { $in: ["reserved", "confirmed"] },
-      startAt: { $lte: today },
-      endAt: { $gt: today },
+      startAt: { $lte: checkInDay }, // Use the date part for comparison
+      endAt: { $gt: checkInDay },
     });
 
     if (
@@ -96,7 +318,7 @@ exports.createGuest = async (req, res) => {
       });
     }
 
-    // --- FROM HERE, THE REST OF THE LOGIC IS UNCHANGED AND CORRECT ---
+    // --- FROM HERE, THE REST OF THE LOGIC IS UNCHANGED ---
     const nights = Math.ceil(
       (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
     );
@@ -104,13 +326,14 @@ exports.createGuest = async (req, res) => {
     const taxRate = Number(settings?.taxRate ?? 0);
     const rate = Number(room.rate) || 0;
     const roomTotal = rate * nights;
-    console.log("//Total Room//", roomTotal);
+    
     const additionalDiscountAmount = Math.min(
       Math.max(0, Number(additionaldiscount) || 0),
       roomTotal
     );
     let stdPct = 0;
     let discountTitle = null;
+    
     if (applyDiscount) {
       const validDiscount = await Discount.findOne({
         startDate: { $lte: today },
@@ -140,6 +363,7 @@ exports.createGuest = async (req, res) => {
       email,
       room: room._id,
       checkInAt: checkIn,
+      checkInTime: checkInTimeStr, // FIX: Explicitly set the correct time string
       checkOutAt: checkOut,
       stayDuration: nights,
       paymentMethod,
@@ -153,6 +377,7 @@ exports.createGuest = async (req, res) => {
 
     room.status = "occupied";
     await room.save();
+    
     if (reservationId)
       await Reservation.findByIdAndUpdate(reservationId, {
         status: "checked-in",
@@ -161,7 +386,7 @@ exports.createGuest = async (req, res) => {
 
     await Invoice.create({
       invoiceNumber: `HSQ-${Date.now()}`,
-      guest: guest._id, // Keep the link to the live guest record
+      guest: guest._id, 
       items: [
         {
           description: `Room Rent (${room.category} - #${room.roomNumber})`,
@@ -179,8 +404,6 @@ exports.createGuest = async (req, res) => {
       dueDate: checkOut,
       status: "pending",
       createdBy: req.user.userId,
-
-      // Save the permanent snapshot data
       checkInAt: guest.checkInAt,
       guestDetails: {
         fullName: guest.fullName,
@@ -192,6 +415,7 @@ exports.createGuest = async (req, res) => {
         category: room.category,
       },
     });
+    
     try {
       await axios.post(
         `${process.env.API_BASE_URL}/api/inventory/checkin`,
@@ -416,9 +640,9 @@ exports.getGuestActivityByDate = async (req, res) => {
     const { date } = req.query;
 
     if (!date) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Date is required. Format: YYYY-MM-DD" 
+      return res.status(400).json({
+        success: false,
+        message: "Date is required. Format: YYYY-MM-DD",
       });
     }
 
@@ -434,31 +658,37 @@ exports.getGuestActivityByDate = async (req, res) => {
     const dayStart = new Date(Date.UTC(y, mo - 1, d, 0, 0, 0, 0));
     const dayEnd = new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999));
 
-    if (dayStart.getUTCFullYear() !== y || dayStart.getUTCMonth() + 1 !== mo || dayStart.getUTCDate() !== d) {
-      return res.status(400).json({ success: false, message: "Invalid calendar date" });
+    if (
+      dayStart.getUTCFullYear() !== y ||
+      dayStart.getUTCMonth() + 1 !== mo ||
+      dayStart.getUTCDate() !== d
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid calendar date" });
     }
     // --- End Validation ---
 
     // Define the two queries we need to run
     const checkInQuery = Guest.find({
-      checkInAt: { $gte: dayStart, $lte: dayEnd }
+      checkInAt: { $gte: dayStart, $lte: dayEnd },
     })
-    .populate('room', 'roomNumber category')
-    .populate('createdBy', 'name')
-    .lean(); // Use .lean() for performance
+      .populate("room", "roomNumber category")
+      .populate("createdBy", "name")
+      .lean(); // Use .lean() for performance
 
     const checkOutQuery = Guest.find({
-      status: 'checked-out', // IMPORTANT: Only count confirmed check-outs
-      checkOutAt: { $gte: dayStart, $lte: dayEnd }
+      status: "checked-out", // IMPORTANT: Only count confirmed check-outs
+      checkOutAt: { $gte: dayStart, $lte: dayEnd },
     })
-    .populate('room', 'roomNumber category')
-    .populate('createdBy', 'name')
-    .lean();
+      .populate("room", "roomNumber category")
+      .populate("createdBy", "name")
+      .lean();
 
     // Run both queries in parallel for maximum efficiency
     const [checkedInGuests, checkedOutGuests] = await Promise.all([
       checkInQuery.exec(),
-      checkOutQuery.exec()
+      checkOutQuery.exec(),
     ]);
 
     // Simple formatter to create a consistent response shape
@@ -470,7 +700,7 @@ exports.getGuestActivityByDate = async (req, res) => {
       roomNumber: guest.room?.roomNumber,
       checkInAt: guest.checkInAt,
       checkOutAt: guest.checkOutAt,
-      createdBy: guest.createdBy?.name || "System"
+      createdBy: guest.createdBy?.name || "System",
     });
 
     res.status(200).json({
@@ -483,15 +713,14 @@ exports.getGuestActivityByDate = async (req, res) => {
       data: {
         checkIns: checkedInGuests.map(formatGuest),
         checkOuts: checkedOutGuests.map(formatGuest),
-      }
+      },
     });
-
   } catch (err) {
     console.error("Error in getGuestActivityByDate:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error", 
-      error: err.message 
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
     });
   }
 };
@@ -544,7 +773,3 @@ exports.getCheckedInGuestsByRoomCategory = async (req, res, next) => {
     res.status(500).json({ success: false, error: "Server Error" });
   }
 };
-
-
-
-
