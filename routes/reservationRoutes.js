@@ -6,7 +6,7 @@ const {
   getReservationById,
   cancelReservation,
   getReservationsCreatedOnDate,
-  deleteReservation
+  deleteReservation,
 } = require("../controller/reservationcontroller");
 const authenticate = require("../middleware/authMiddleware");
 const authorize = require("../middleware/adminMiddleware");
@@ -18,8 +18,11 @@ router.post("/create-reservation", createReservation);
 router.get("/get-reservations", getReservations);
 router.get("/get-reservation/:id", getReservationById);
 router.delete("/cancel-reservation/:id/cancel", cancelReservation);
-router.delete("/delete-reservation/:id/delete", authorize('admin'), deleteReservation);
-router.get("/calendar-view", getReservationsCreatedOnDate);
-
+router.delete(
+  "/delete-reservation/:id/delete",
+  authorize("admin"),
+  deleteReservation
+);
+router.get("/created-on", getReservationsCreatedOnDate);
 
 module.exports = router;
