@@ -5,8 +5,9 @@ const {
   getReservations,
   getReservationById,
   cancelReservation,
-  getReservationsCreatedOnDate,
+  // getReservationsCreatedOnDate,
   deleteReservation,
+  getDailyActivityReport
 } = require("../controller/reservationcontroller");
 const authenticate = require("../middleware/authMiddleware");
 const authorize = require("../middleware/adminMiddleware");
@@ -23,6 +24,7 @@ router.delete(
   authorize("admin"),
   deleteReservation
 );
-router.get("/created-on", getReservationsCreatedOnDate);
+// router.get("/created-on", getReservationsCreatedOnDate);
+router.get("/reports/daily-activity", getDailyActivityReport);
 
 module.exports = router;

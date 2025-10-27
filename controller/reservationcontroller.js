@@ -23,12 +23,10 @@ exports.createReservation = async (req, res) => {
       !checkin ||
       !checkout
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Please provide all required fields.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields.",
+      });
     }
 
     const room = await Room.findOne({ roomNumber });
@@ -46,21 +44,17 @@ exports.createReservation = async (req, res) => {
     const endAt = new Date(`${checkout}T00:00:00.000Z`);
 
     if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid date format. Please use YYYY-MM-DD.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Please use YYYY-MM-DD.",
+      });
     }
 
     if (endAt <= startAt)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Checkout date must be after check-in date",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Checkout date must be after check-in date",
+      });
 
     // The rest of the logic is already robust
     const existingReservation = await Reservation.findOne({
@@ -70,12 +64,10 @@ exports.createReservation = async (req, res) => {
       endAt: { $gt: startAt },
     });
     if (existingReservation)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: `Room ${roomNumber} already has a reservation during this period.`,
-        });
+      return res.status(400).json({
+        success: false,
+        message: `Room ${roomNumber} already has a reservation during this period.`,
+      });
 
     const overlappingGuest = await Guest.findOne({
       room: room._id,
@@ -84,12 +76,10 @@ exports.createReservation = async (req, res) => {
       checkOutAt: { $gt: startAt },
     });
     if (overlappingGuest)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: `Room ${roomNumber} is occupied by a guest during this period.`,
-        });
+      return res.status(400).json({
+        success: false,
+        message: `Room ${roomNumber} is occupied by a guest during this period.`,
+      });
 
     const reservation = await Reservation.create({
       fullName,
@@ -211,15 +201,13 @@ exports.deleteReservation = async (req, res) => {
       reservationToDelete.status === "checked-in" ||
       reservationToDelete.status === "checked-out"
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: `Cannot delete a reservation that is currently '${reservationToDelete.status}'. Please cancel it first if it is 'reserved'.`,
-        });
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete a reservation that is currently '${reservationToDelete.status}'. Please cancel it first if it is 'reserved'.`,
+      });
     }
 
-    // 3. If the reservation was 'reserved' and is now being deleted, 
+    // 3. If the reservation was 'reserved' and is now being deleted,
     // we should make sure the associated room is set back to 'available'.
     if (reservationToDelete.status === "reserved") {
       const room = await Room.findById(reservationToDelete.room);
@@ -231,13 +219,13 @@ exports.deleteReservation = async (req, res) => {
 
     // 4. Perform the deletion
     const result = await Reservation.findByIdAndDelete(reservationId);
-    
-    // This check is slightly redundant since we already checked in step 1, 
+
+    // This check is slightly redundant since we already checked in step 1,
     // but is good practice to ensure the operation was successful.
     if (!result) {
-        return res
-            .status(404)
-            .json({ success: false, message: "Reservation not found after check" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Reservation not found after check" });
     }
 
     // 5. Success response
@@ -254,96 +242,83 @@ exports.deleteReservation = async (req, res) => {
   }
 };
 
-exports.getReservationsCreatedOnDate = async (req, res) => {
+exports.getDailyActivityReport = async (req, res) => {
   try {
     const { date } = req.query;
 
     if (!date) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Date is required. Format: YYYY-MM-DD" 
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Date is required." });
     }
 
-    // --- Robust Date Validation ---
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    if (!m) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid date format. Please use YYYY-MM-DD",
-      });
-    }
-    const [_, y, mo, d] = m.map(Number);
-    const dayStart = new Date(Date.UTC(y, mo - 1, d, 0, 0, 0, 0));
-    const dayEnd = new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999));
+    const dayStart = new Date(`${date}T00:00:00.000Z`);
+    const dayEnd = new Date(`${date}T23:59:59.999Z`);
 
-    if (dayStart.getUTCFullYear() !== y || dayStart.getUTCMonth() + 1 !== mo || dayStart.getUTCDate() !== d) {
-      return res.status(400).json({ success: false, message: "Invalid calendar date" });
-    }
-    // --- End Validation ---
-
-    const reservations = await Reservation.find({
-      createdAt: { $gte: dayStart, $lte: dayEnd }
-    })
-    .populate("room", "roomNumber category")
-    .populate("createdBy", "name")
-    .sort({ createdAt: -1 })
-    .lean();
-
-    const formattedReservations = reservations.map(reservation => {
-      const checkInDate = new Date(reservation.startAt);
-      const checkOutDate = new Date(reservation.endAt);
-      const totalDays = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
-      
-      return {
-        _id: reservation._id,
-        fullName: reservation.fullName,
-        phone: reservation.phone,
-        status: reservation.status,
-        source: reservation.source,
-        roomNumber: reservation.room?.roomNumber,
-        checkIn: reservation.startAt,
-        checkOut: reservation.endAt,
-        totalDays,
-        createdBy: reservation.createdBy?.name || "System",
-        createdAt: reservation.createdAt,
-      };
-    });
-
-    // --- MODIFIED SUMMARY BLOCK ---
-    // This is a more efficient way to calculate the summary in one pass.
-    const byStatusSummary = formattedReservations.reduce((acc, reservation) => {
-      const status = reservation.status;
-      // If the status key exists, increment it. Otherwise, set it to 1.
-      acc[status] = (acc[status] || 0) + 1;
-      return acc;
-    }, { 
-      // Initialize all possible statuses to 0. 
-      // This ensures the frontend always gets these keys, even if the count is zero.
-      'reserved': 0, 
-      'checked-in': 0, 
-      'checked-out': 0, 
-      'cancelled': 0 
-    });
-
-    const summary = {
-      totalCreated: formattedReservations.length,
-      byStatus: byStatusSummary
+    const queries = {
+      scheduledArrivals: Reservation.find({
+        status: "reserved",
+        startAt: { $gte: dayStart, $lte: dayEnd },
+      })
+        .populate("room", "roomNumber")
+        .lean(),
+      actualCheckIns: Guest.find({
+        checkInAt: { $gte: dayStart, $lte: dayEnd },
+      })
+        .populate("room", "roomNumber")
+        .lean(),
+      actualCheckOuts: Guest.find({
+        status: "checked-out",
+        checkOutAt: { $gte: dayStart, $lte: dayEnd },
+      })
+        .populate("room", "roomNumber")
+        .lean(),
+      newBookings: Reservation.find({
+        createdAt: { $gte: dayStart, $lte: dayEnd },
+      })
+        .populate("room", "roomNumber")
+        .lean(),
+      cancellations: Reservation.find({
+        status: "cancelled",
+        updatedAt: { $gte: dayStart, $lte: dayEnd },
+      })
+        .populate("room", "roomNumber")
+        .lean(),
     };
 
-    res.status(200).json({
-      success: true,
-      date: date,
-      summary: summary,
-      data: formattedReservations
+     const [arrivals, checkIns, checkOuts, newBookings, cancellations] =
+      await Promise.all(Object.values(queries));
+
+    const formatReportItem = (item, type) => ({
+      ...item,
+      type,
     });
 
+    const responseData = {
+      checkIns: checkIns.map((item) => formatReportItem(item, "guest")),
+      checkOuts: checkOuts.map((item) => formatReportItem(item, "guest")),
+      newBookings: newBookings.map((item) =>
+        formatReportItem(item, "reservation")
+      ),
+      arrivals: arrivals.map((item) => formatReportItem(item, "reservation")),
+      cancellations: cancellations.map((item) =>
+        formatReportItem(item, "reservation")
+      ),
+    };
+
+    const summary = {
+      arrivals: arrivals.length,
+      checkIns: checkIns.length,
+      checkOuts: checkOuts.length,
+      newBookings: newBookings.length,
+      cancellations: cancellations.length,
+    };
+
+    res.status(200).json({ success: true, date, summary, data: responseData });
   } catch (err) {
-    console.error("Error in getReservationsCreatedOnDate:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Server error", 
-      error: err.message 
-    });
+    console.error("Error in getDailyActivityReport:", err);
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
