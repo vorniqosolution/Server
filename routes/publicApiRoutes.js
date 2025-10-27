@@ -10,6 +10,7 @@ const {
   getPublicAvailableRooms,
   createPublicReservation,
   getPublicCategoryDetails,
+  getGoolgeReview,
 } = require("../controller/publicController");
 
 router.get("/available-rooms", publicApiLimiter, getPublicAvailableRooms);

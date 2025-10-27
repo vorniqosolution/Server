@@ -311,9 +311,9 @@ exports.getGoolgeReview = async (req, res) => {
   try {
     const response = await getJson({
       engine: "google_maps_reviews",
-      data_id: "0x38dfd78972fd4569:0xdc3c75a9dc210b41",
+      data_id: `${process.env.SERP_DATA_ID}`,
       sort_by: "ratingHigh",
-      api_key: `${process.env.SERPAPI}`,
+      api_key: `${process.env.SERP_API}`,
     });
     return res.json(response.reviews);
   } catch (error) {
