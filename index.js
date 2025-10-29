@@ -18,7 +18,12 @@ const publicApiRoutes = require("./routes/publicApiRoutes");
 dotenv.config();
 const app = express();
 
-const allowedOrigins = [process.env.ALLOWED_ORIGIN, process.env.ALLOWED_ORIGIN_2];
+const allowedOrigins = [
+  process.env.ALLOWED_ORIGIN,
+  process.env.ALLOWED_ORIGIN_2,
+  process.env.WEBSITE_ALLOWED_ORIGIN,
+  process.env.WEBSITE_ALLOWED_ORIGIN_2,
+];
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -35,12 +40,11 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 
-
 // Connect to MongoDB
 connectDB();
 
 // Public API routes
-app.use('/api/public', publicApiRoutes);
+app.use("/api/public", publicApiRoutes);
 
 // CRM ROUTES (Admin, receptionist, accountant)
 app.use("/api/auth", authRoutes);
@@ -53,7 +57,6 @@ app.use("/api/invoice", invoice);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reservation", reservationRoutes);
 app.use("/api/tax", SettingRoutes);
-
 
 // testing purpose
 app.get("/test", (req, res) => {
