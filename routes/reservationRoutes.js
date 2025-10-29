@@ -5,26 +5,29 @@ const {
   getReservations,
   getReservationById,
   cancelReservation,
-  // getReservationsCreatedOnDate,
   deleteReservation,
-  getDailyActivityReport
+  getDailyActivityReport,
 } = require("../controller/reservationcontroller");
+
+// ======================== MIDDLEWARES =============================
 const authenticate = require("../middleware/authMiddleware");
 const authorize = require("../middleware/adminMiddleware");
 
-// Protect all guest routes
 router.use(authenticate);
 
+// ======================== ROUTES =============================
 router.post("/create-reservation", createReservation);
 router.get("/get-reservations", getReservations);
+router.get("/reports/daily-activity", getDailyActivityReport);
 router.get("/get-reservation/:id", getReservationById);
 router.delete("/cancel-reservation/:id/cancel", cancelReservation);
-router.delete(
-  "/delete-reservation/:id/delete",
-  authorize("admin"),
-  deleteReservation
-);
-// router.get("/created-on", getReservationsCreatedOnDate);
-router.get("/reports/daily-activity", getDailyActivityReport);
+
+// ======================== ADMIN ONLY ROUTES =============================
+router.delete("/:id", authorize("admin"), deleteReservation);
+// router.delete(
+//   "/delete-reservation/:id/delete",
+//   authorize("admin"),
+//   deleteReservation
+// );
 
 module.exports = router;
