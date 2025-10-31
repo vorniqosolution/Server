@@ -18,7 +18,13 @@ const publicApiRoutes = require("./routes/publicApiRoutes");
 dotenv.config();
 const app = express();
 
-const allowedOrigins = [process.env.ALLOWED_ORIGIN, process.env.ALLOWED_ORIGIN_2];
+const allowedOrigins = [
+  process.env.ALLOWED_ORIGIN,
+  process.env.ALLOWED_ORIGIN_2,
+  process.env.WEBSITE_ALLOWED_ORIGIN,
+  process.env.WEBSITE_ALLOWED_ORIGIN_2,
+];
+
 app.use(
   cors({
     origin: (origin, callback) => {
