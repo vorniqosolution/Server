@@ -10,7 +10,7 @@ const { uploadImageToS3, deleteImageFromS3 } = require("../service/imageUploadSe
 
 exports.createRoom = async (req, res) => {
   try {
-    const { roomNumber, bedType, category, view, rate, owner, status, amenities, publicDescription, adults } =
+    const { roomNumber, bedType, category, view, rate, owner, status, amenities, publicDescription, adults, infants } =
       req.body;
 
     const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
@@ -19,7 +19,7 @@ exports.createRoom = async (req, res) => {
       return res.status(400).json({ message: "Room number already exists" });
     }
 
-    const roomData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults };
+    const roomData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults, infants: infants || 0 };
     if (status) roomData.status = status;
 
     if (req.files && req.files.length > 0) {
@@ -37,7 +37,7 @@ exports.createRoom = async (req, res) => {
 
 exports.updateRoom = async (req, res) => {
   try {
-    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities, publicDescription, adults } = req.body;
+    const { roomNumber, bedType, category, view, rate, owner, status, deletedImages, amenities, publicDescription, adults, infants } = req.body;
     const isPubliclyVisible = req.body.isPubliclyVisible === 'true';
 
     const room = await Room.findById(req.params.id);
@@ -47,6 +47,7 @@ exports.updateRoom = async (req, res) => {
 
     const updateData = { roomNumber, bedType, category, view, rate, owner, amenities, isPubliclyVisible, publicDescription, adults };
     if (status !== undefined) updateData.status = status;
+    if (infants !== undefined) updateData.infants = infants;
 
     // --- Start of Corrected Image Handling Logic ---
     let finalImageArray = room.images || [];
@@ -167,26 +168,13 @@ exports.deleteRoom = async (req, res) => {
       return res.status(404).json({ message: "Room not found" });
     }
 
-    // Delete all images from filesystem
+    // --- S3 FIX: Delete from AWS instead of local folder ---
     if (room.images && room.images.length > 0) {
-      for (const image of room.images) {
-        try {
-          const filePath = path.join(__dirname, '../uploads/rooms', image.filename);
-          // Check if file exists before deleting
-          if (fs.existsSync(filePath)) {
-            await unlinkAsync(filePath);
-            console.log(`Successfully deleted file: ${image.filename}`);
-          } else {
-            console.log(`File not found, skipping: ${image.filename}`);
-          }
-        } catch (fileErr) {
-          console.error(`Error deleting file ${image.filename}:`, fileErr);
-          // Continue with deletion even if one file fails
-        }
-      }
+      const deletePromises = room.images.map(imageUrl => deleteImageFromS3(imageUrl));
+      await Promise.all(deletePromises);
     }
+    // ------------------------------------------------------
 
-    // Now delete the room from database
     await room.deleteOne();
     res.status(200).json({ message: "Room deleted successfully" });
   } catch (err) {
@@ -194,6 +182,41 @@ exports.deleteRoom = async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 };
+
+// exports.deleteRoom = async (req, res) => {
+//   try {
+//     const room = await Room.findById(req.params.id);
+//     if (!room) {
+//       return res.status(404).json({ message: "Room not found" });
+//     }
+
+//     // Delete all images from filesystem
+//     if (room.images && room.images.length > 0) {
+//       for (const image of room.images) {
+//         try {
+//           const filePath = path.join(__dirname, '../uploads/rooms', image.filename);
+//           // Check if file exists before deleting
+//           if (fs.existsSync(filePath)) {
+//             await unlinkAsync(filePath);
+//             console.log(`Successfully deleted file: ${image.filename}`);
+//           } else {
+//             console.log(`File not found, skipping: ${image.filename}`);
+//           }
+//         } catch (fileErr) {
+//           console.error(`Error deleting file ${image.filename}:`, fileErr);
+//           // Continue with deletion even if one file fails
+//         }
+//       }
+//     }
+
+//     // Now delete the room from database
+//     await room.deleteOne();
+//     res.status(200).json({ message: "Room deleted successfully" });
+//   } catch (err) {
+//     console.error("Room deletion error:", err);
+//     res.status(500).json({ message: "Server error", error: err.message });
+//   }
+// };
 
 exports.getAvailableRooms = async (req, res) => {
   try {

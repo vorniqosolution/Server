@@ -46,6 +46,12 @@ const roomSchema = new mongoose.Schema(
       default: 2,
     },
 
+    infants: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     cleaniness: {
       type: String,
       trim: true,
