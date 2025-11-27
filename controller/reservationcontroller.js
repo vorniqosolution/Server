@@ -2,6 +2,106 @@ const Reservation = require("../model/reservationmodel");
 const Room = require("../model/room");
 const Guest = require("../model/guest");
 
+// exports.createReservation = async (req, res) => {
+//   try {
+//     const {
+//       fullName,
+//       address,
+//       phone,
+//       email,
+//       cnic,
+//       roomNumber,
+//       checkin,
+//       checkout,
+//     } = req.body;
+//     if (
+//       !fullName ||
+//       !address ||
+//       !phone ||
+//       !cnic ||
+//       !roomNumber ||
+//       !checkin ||
+//       !checkout
+//     ) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Please provide all required fields.",
+//       });
+//     }
+
+//     const room = await Room.findOne({ roomNumber });
+//     if (!room)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Room not found" });
+//     if (room.status === "maintenance")
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Room is under maintenance." });
+
+//     // Use the reliable, native JavaScript UTC date parsing
+//     const startAt = new Date(`${checkin}T00:00:00.000Z`);
+//     const endAt = new Date(`${checkout}T00:00:00.000Z`);
+
+//     if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Invalid date format. Please use YYYY-MM-DD.",
+//       });
+//     }
+
+//     if (endAt <= startAt)
+//       return res.status(400).json({
+//         success: false,
+//         message: "Checkout date must be after check-in date",
+//       });
+
+//     // The rest of the logic is already robust
+//     const existingReservation = await Reservation.findOne({
+//       room: room._id,
+//       status: { $in: ["reserved", "confirmed"] },
+//       startAt: { $lt: endAt },
+//       endAt: { $gt: startAt },
+//     });
+//     if (existingReservation)
+//       return res.status(400).json({
+//         success: false,
+//         message: `Room ${roomNumber} already has a reservation during this period.`,
+//       });
+
+//     const overlappingGuest = await Guest.findOne({
+//       room: room._id,
+//       status: "checked-in",
+//       checkInAt: { $lt: endAt },
+//       checkOutAt: { $gt: startAt },
+//     });
+//     if (overlappingGuest)
+//       return res.status(400).json({
+//         success: false,
+//         message: `Room ${roomNumber} is occupied by a guest during this period.`,
+//       });
+
+//     const reservation = await Reservation.create({
+//       fullName,
+//       address,
+//       phone,
+//       email,
+//       cnic,
+//       room: room._id,
+//       startAt,
+//       endAt,
+//       createdBy: req.user.userId,
+//     });
+
+//     return res.status(201).json({ success: true, data: reservation });
+//   } catch (err) {
+//     console.error("createReservation Error:", err);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Server error", error: err.message });
+//   }
+// };
+
 exports.createReservation = async (req, res) => {
   try {
     const {
@@ -13,7 +113,16 @@ exports.createReservation = async (req, res) => {
       roomNumber,
       checkin,
       checkout,
+      // --- NEW FIELDS ADDED FOR CONSISTENCY ---
+      adults = 1,        // Default to 1 if not provided
+      infants = 0,       // Default to 0 if not provided
+      arrivalTime,       // Maps to 'expectedArrivalTime' in Model
+      specialRequest,
+      paymentMethod,
+      promoCode
+      // ----------------------------------------
     } = req.body;
+
     if (
       !fullName ||
       !address ||
@@ -34,10 +143,30 @@ exports.createReservation = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Room not found" });
+    
     if (room.status === "maintenance")
       return res
         .status(400)
         .json({ success: false, message: "Room is under maintenance." });
+
+    // --- NEW CAPACITY CHECK LOGIC ---
+    // 1. Check Adults
+    if (room.adults < adults) {
+        return res.status(400).json({ 
+            success: false, 
+            message: `Capacity exceeded. Room ${roomNumber} allows max ${room.adults} adults.` 
+        });
+    }
+    
+    // 2. Check Infants (Safely handle if room.infants is undefined in DB)
+    const roomMaxInfants = room.infants || 0; 
+    if (roomMaxInfants < infants) {
+        return res.status(400).json({ 
+            success: false, 
+            message: `Capacity exceeded. Room ${roomNumber} allows max ${roomMaxInfants} infants.` 
+        });
+    }
+    // -------------------------------
 
     // Use the reliable, native JavaScript UTC date parsing
     const startAt = new Date(`${checkin}T00:00:00.000Z`);
@@ -90,6 +219,15 @@ exports.createReservation = async (req, res) => {
       room: room._id,
       startAt,
       endAt,
+      // --- SAVING NEW DATA ---
+      adults,
+      infants,
+      expectedArrivalTime: arrivalTime, // Mapping frontend 'arrivalTime' to DB field
+      specialRequest,
+      paymentMethod,
+      promoCode,
+      // -----------------------
+      source: "CRM", // Explicitly mark this as an internal booking
       createdBy: req.user.userId,
     });
 
