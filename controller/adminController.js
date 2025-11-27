@@ -82,7 +82,6 @@ exports.DeleteRecipient = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-
 exports.ViewRecipient = async (req, res) => {
   try {
     if (req.user.role !== "admin") {
