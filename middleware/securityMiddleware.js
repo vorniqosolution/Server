@@ -27,9 +27,25 @@ exports.reservationValidationRules = [
     body('roomId').isMongoId().withMessage('A valid room ID is required.'),
     body('checkInDate').isDate().withMessage('Invalid check-in date format.').toDate(),
     body('checkOutDate').isDate().withMessage('Invalid check-out date format.').toDate(),
+    
+    // --- UPDATED RULES START ---
+    body('adults')
+        .optional()
+        .isInt({ min: 1 })
+        .withMessage('Adults must be at least 1.')
+        .toInt(),
+        
+    body('infants')
+        .optional()
+        .isInt({ min: 0 })
+        .withMessage('Infants cannot be negative.')
+        .toInt(),
+    // --- UPDATED RULES END ---
+
     body('expectedArrivalTime').trim().escape(),
     body('specialRequest').trim().escape(),
     body('promoCode').trim().escape(),
+    
     body('checkOutDate').custom((value, { req }) => {
         if (new Date(value) <= new Date(req.body.checkInDate)) {
             throw new Error('Check-out date must be after check-in date.');

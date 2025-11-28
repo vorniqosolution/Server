@@ -44,6 +44,8 @@ const invoiceSchema = new mongoose.Schema(
       fullName: { type: String, required: true },
       phone: { type: String, required: true },
       cnic: { type: String, required: true },
+      adults: { type: Number, default: 1 },
+      infants: { type: Number, default: 0 }
     },
     roomDetails: {
       roomNumber: { type: String, required: true },

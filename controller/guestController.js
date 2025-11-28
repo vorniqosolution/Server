@@ -18,6 +18,8 @@ exports.createGuest = async (req, res) => {
       cnic,
       email,
       roomNumber,
+      adults = 1,
+      infants = 0,
       checkInDate,
       checkOutDate,
       paymentMethod,
@@ -85,6 +87,21 @@ exports.createGuest = async (req, res) => {
         .json({ success: false, message: `Room is currently ${room.status}.` });
     }
 
+    // --- NEW: Capacity Check Logic ---
+    if (room.adults < adults) {
+        return res.status(400).json({ 
+            success: false, 
+            message: `Capacity exceeded. Room ${roomNumber} allows max ${room.adults} adults.` 
+        });
+    }
+    const roomMaxInfants = room.infants || 0;
+    if (roomMaxInfants < infants) {
+        return res.status(400).json({ 
+            success: false, 
+            message: `Capacity exceeded. Room ${roomNumber} allows max ${roomMaxInfants} infants.` 
+        });
+    }
+
     const blockingReservation = await Reservation.findOne({
       room: room._id,
       status: { $in: ["reserved", "confirmed"] },
@@ -147,6 +164,10 @@ exports.createGuest = async (req, res) => {
       cnic,
       email,
       room: room._id,
+      // Save data
+      adults, 
+      infants, 
+      // ---------
       checkInAt: checkIn,
       checkInTime: checkInTimeStr, // FIX: Explicitly set the correct time string
       checkOutAt: checkOut,
@@ -194,6 +215,8 @@ exports.createGuest = async (req, res) => {
         fullName: guest.fullName,
         phone: guest.phone,
         cnic: guest.cnic,
+        adults: guest.adults,
+        infants: guest.infants
       },
       roomDetails: {
         roomNumber: room.roomNumber,
@@ -378,17 +401,7 @@ exports.deleteGuest = async (req, res) => {
 exports.UpdateGuestById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fullName, email, phone, cnic, paymentMethod, address } = req.body;
-
-    console.log("Received data:", {
-      fullName,
-      email,
-      phone,
-      cnic,
-      paymentMethod,
-      address,
-    });
-    console.log("Guest ID:", id);
+    const { fullName, email, phone, cnic, paymentMethod, address, adults, infants } = req.body;
 
     const updatedGuest = await Guest.findByIdAndUpdate(
       id,
@@ -399,6 +412,8 @@ exports.UpdateGuestById = async (req, res) => {
         cnic: cnic,
         paymentMethod: paymentMethod,
         address: address,
+      ...(adults !== undefined && { adults }),
+      ...(infants !== undefined && { infants }),
       },
       { new: true, runValidators: true }
     );
