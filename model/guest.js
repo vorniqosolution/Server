@@ -12,6 +12,19 @@ const guestSchema = new mongoose.Schema(
     },
     cnic: { type: String, required: true, trim: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: "Room", required: true },
+    // --- NEW FIELDS ADDED ---
+    adults: { 
+      type: Number, 
+      required: true, 
+      default: 1, 
+      min: 1 
+    },
+    infants: { 
+      type: Number, 
+      default: 0, 
+      min: 0 
+    },
+    // ------------------------
     checkInAt: { type: Date, required: true }, 
     checkInTime: {
       type: String,

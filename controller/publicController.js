@@ -8,35 +8,36 @@ const { getJson } = require("serpapi");
 
 exports.getPublicAvailableRooms = async (req, res) => {
   try {
-    const { checkin, checkout, guests } = req.query;
-    const numberOfGuests = parseInt(guests, 10) || 1; // Default to 1 guest if not provided
+    const { checkin, checkout, adults } = req.query;
+
+    const reqAdults = parseInt(adults, 10) || 1;
+    
     if (!checkin || !checkout) {
-      return res
-        .status(400)
-        .json({ message: "Check-in and checkout dates are required." });
+      return res.status(400).json({ message: "Check-in and checkout dates are required." });
     }
+
     const startDate = new Date(`${checkin}T00:00:00.000Z`);
     const endDate = new Date(`${checkout}T00:00:00.000Z`);
+
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res
-        .status(400)
-        .json({ message: "Invalid date format. Use YYYY-MM-DD." });
+      return res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD." });
     }
     if (endDate <= startDate) {
-      return res
-        .status(400)
-        .json({ message: "Check-out must be after check-in." });
+      return res.status(400).json({ message: "Check-out must be after check-in." });
     }
+
     const reservedRooms = await Reservation.find({
       status: { $in: ["reserved", "confirmed"] },
       startAt: { $lt: endDate },
       endAt: { $gt: startDate },
     }).select("room");
+
     const occupiedRooms = await Guest.find({
       status: "checked-in",
       checkInAt: { $lt: endDate },
       checkOutAt: { $gt: startDate },
     }).select("room");
+
     const unavailableRoomIds = [
       ...new Set([
         ...reservedRooms.map((r) => r.room),
@@ -44,37 +45,34 @@ exports.getPublicAvailableRooms = async (req, res) => {
       ]),
     ];
 
-    // --- Aggregation Pipeline with additional fields ---
     const groupedAvailableRooms = await Room.aggregate([
-      // Stage 1: Match available rooms
       {
         $match: {
           _id: { $nin: unavailableRoomIds },
           isPubliclyVisible: true,
           status: { $ne: "maintenance" },
-          adults: { $gte: numberOfGuests },
+          adults: { $gte: reqAdults }, 
         },
       },
-
-      // Stage 2: Group by category and add all the requested fields
       {
         $group: {
           _id: {
             category: "$category",
             bedType: "$bedType",
           },
-          // --- Collect representative details for the group card ---
-          publicDescription: { $first: "$publicDescription" }, // desc
-          amenities: { $first: "$amenities" }, // aminities
-          cleanliness: { $first: "$cleanliness" }, // clineniess (with typo fix)
-          category: { $first: "$category" }, // category
-          bedType: { $first: "$bedType" }, // bedtype
-          // --- Rate & Adults ---
-          startingRate: { $min: "$rate" }, // room rate
-          minAdults: { $min: "$adults" }, // adults
-          maxAdults: { $max: "$adults" }, // adults
+          publicDescription: { $first: "$publicDescription" },
+          amenities: { $first: "$amenities" },
+          cleanliness: { $first: "$cleanliness" },
+          category: { $first: "$category" },
+          bedType: { $first: "$bedType" },
+          startingRate: { $min: "$rate" },
+          minAdults: { $min: "$adults" },
+          maxAdults: { $max: "$adults" },
+          minInfants: { $min: "$infants" }, 
+          maxInfants: { $max: "$infants" },
+
           imageUrl: { $first: { $arrayElemAt: ["$images.path", 0] } },
-          // --- Collect the list of specific rooms ---
+          
           availableRooms: {
             $push: {
               _id: "$_id",
@@ -82,13 +80,12 @@ exports.getPublicAvailableRooms = async (req, res) => {
               view: "$view",
               rate: "$rate",
               adults: "$adults",
+              infants: "$infants",
               images: "$images",
             },
           },
         },
       },
-
-      // Stage 3: Project the final, clean shape for the API response
       {
         $project: {
           _id: 0,
@@ -96,21 +93,22 @@ exports.getPublicAvailableRooms = async (req, res) => {
           publicDescription: 1,
           startingRate: 1,
           amenities: 1,
-          cleanliness: 1, // ✨ ADDED
-          category: 1, // ✨ ADDED
-          bedType: 1, // ✨ ADDED
+          cleanliness: 1,
+          category: 1,
+          bedType: 1,
           adultsCapacity: {
-            // ✨ ADDED (better than a single "adults" value)
             $cond: {
               if: { $eq: ["$minAdults", "$maxAdults"] },
               then: { $toString: "$minAdults" },
-              else: {
-                $concat: [
-                  { $toString: "$minAdults" },
-                  "-",
-                  { $toString: "$maxAdults" },
-                ],
-              },
+              else: { $concat: [{ $toString: "$minAdults" }, "-", { $toString: "$maxAdults" }] },
+            },
+          },
+          // --- CHANGE 3: Expose Infant Capacity ---
+          infantsCapacity: {
+            $cond: {
+              if: { $eq: ["$minInfants", "$maxInfants"] },
+              then: { $toString: "$minInfants" }, // e.g., "0"
+              else: { $concat: [{ $toString: "$minInfants" }, "-", { $toString: "$maxInfants" }] }, // e.g., "0-1"
             },
           },
           imageUrl: 1,
@@ -118,21 +116,13 @@ exports.getPublicAvailableRooms = async (req, res) => {
           availableCount: { $size: "$availableRooms" },
         },
       },
-
-      // Stage 4: Sort
-      {
-        $sort: {
-          startingRate: 1,
-        },
-      },
+      { $sort: { startingRate: 1 } },
     ]);
 
     res.status(200).json(groupedAvailableRooms);
   } catch (err) {
     console.error("Error checking availability:", err);
-    res
-      .status(500)
-      .json({ message: "Server error while checking availability." });
+    res.status(500).json({ message: "Server error while checking availability." });
   }
 };
 
@@ -148,7 +138,6 @@ exports.getPublicCategoryDetails = async (req, res) => {
         $sort: {
           category: 1,
           rate: 1,
-          // roomNumber: 1
         },
       },
       {
@@ -171,12 +160,8 @@ exports.getPublicCategoryDetails = async (req, res) => {
                 images: "$$room.images",
                 publicName: "$$room.publicName",
                 publicDescription: "$$room.publicDescription",
-                // roomNumber: "$$room.roomNumber",
-                // bedType: "$$room.bedType",
-                // view: "$$room.view",
-                // status: "$$room.status",
-                // adults: "$$room.adults",
-                // amenities: "$$room.amenities",
+                adults: "$$room.adults",
+                infants: "$$room.infants"
               },
             },
           },
@@ -212,6 +197,8 @@ exports.createPublicReservation = async (req, res) => {
     checkInDate,
     checkOutDate,
     expectedArrivalTime,
+    adults,
+    infants
   } = req.body;
 
   try {
@@ -236,6 +223,20 @@ exports.createPublicReservation = async (req, res) => {
           "This room is currently under maintenance and cannot be booked.",
       });
     }
+
+    // --- STRICT CAPACITY CHECK ---
+    const reqAdults = parseInt(adults) || 1;
+    const reqInfants = parseInt(infants) || 0;
+
+    if (room.adults < reqAdults) {
+        return res.status(409).json({ message: `This room allows a maximum of ${room.adults} adults.` });
+    }
+    
+    const maxInfants = room.infants || 0; 
+    if (maxInfants < reqInfants) {
+        return res.status(409).json({ message: `This room allows a maximum of ${maxInfants} infants.` });
+    }
+    // ----------------------------
 
     const existingReservation = await Reservation.findOne({
       room: room._id,
@@ -270,6 +271,8 @@ exports.createPublicReservation = async (req, res) => {
       room: room._id,
       startAt,
       endAt,
+      adults: reqAdults,
+      infants: reqInfants,
       expectedArrivalTime,
       status: "reserved",
       source: "Website",
@@ -278,10 +281,6 @@ exports.createPublicReservation = async (req, res) => {
       promoCode,
       createdBy: process.env.WEBSITE_SYSTEM_USER_ID,
     });
-    console.log(
-      "System User ID from .env:",
-      process.env.WEBSITE_SYSTEM_USER_ID
-    );
 
     const savedReservation = await newReservation.save();
 
@@ -307,6 +306,7 @@ exports.createPublicReservation = async (req, res) => {
     res.status(500).json({ message: "An unexpected server error occurred." });
   }
 };
+
 exports.getGoolgeReview = async (req, res) => {
   try {
     const response = await getJson({

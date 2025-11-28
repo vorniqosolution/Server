@@ -1,238 +1,3 @@
-<!-- <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Invoice - <%= invoice.invoiceNumber %></title>
-    <style>
-      body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        color: #333;
-        line-height: 1.6;
-      }
-      .invoice-box {
-        max-width: 800px;
-        margin: auto;
-        padding: 30px;
-        border: 1px solid #eee;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
-      }
-      .header {
-        text-align: center;
-        margin-bottom: 20px;
-      }
-      .header h1 {
-        margin: 0;
-        font-weight: 300;
-        color: #000;
-      }
-      .header h2 {
-        margin: 0;
-        font-size: 1em;
-        font-weight: 400;
-        color: #555;
-      }
-      .meta-info {
-        border-top: 1px solid #eee;
-        border-bottom: 1px solid #eee;
-        padding: 10px 0;
-        margin-bottom: 30px;
-        font-size: 0.9em;
-        color: #666;
-      }
-      .guest-intro {
-        background-color: #f7f7f7;
-        padding: 15px;
-        border-radius: 5px;
-        margin-bottom: 30px;
-      }
-      .guest-intro h3 {
-        margin-top: 0;
-      }
-      .guest-intro p {
-        margin: 0;
-        display: flex;
-        justify-content: space-between;
-      }
-      .section-title {
-        border-bottom: 2px solid #333;
-        padding-bottom: 5px;
-        margin-bottom: 15px;
-        font-size: 1.2em;
-        font-weight: 600;
-      }
-      .details-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 40px;
-      }
-      .info-table {
-        width: 100%;
-      }
-      .info-table td {
-        padding: 5px 0;
-      }
-      .info-table .label {
-        font-weight: 600;
-        width: 40%;
-      }
-      .room-details,
-      .payment-details {
-        margin-top: 20px;
-      }
-      .billing-summary table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      .billing-summary td {
-        padding: 8px 5px;
-        border-bottom: 1px solid #eee;
-      }
-      .billing-summary .amount {
-        text-align: right;
-      }
-      .billing-summary .grand-total {
-        font-weight: bold;
-        font-size: 1.2em;
-        background-color: #f7f7f7;
-      }
-      .footer {
-        text-align: center;
-        margin-top: 40px;
-        font-size: 0.9em;
-        color: #777;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="invoice-box">
-      <header class="header">
-        <h1>HSQ TOWERS</h1>
-        <h2>Premium Hospitality Services</h2>
-      </header>
-
-      <section class="meta-info">
-        Invoice Generated: <%= invoice.invoiceNumber %>, Room <%=
-        guest.room.roomNumber %>, <%= new
-        Date(invoice.issueDate).toLocaleString('en-US') %>
-      </section>
-
-      <section class="guest-intro">
-        <h3><%= guest.fullName %></h3>
-        <p>
-          <span
-            >Guest ID: <%= guest._id.toString().slice(-8).toUpperCase() %></span
-          >
-          <span style="font-weight: bold; color: green"
-            ><%= guest.status === 'checked-in' ? 'Active Stay' : 'Checked Out'
-            %></span
-          >
-        </p>
-      </section>
-
-      <main class="details-grid">
-        <div class="left-column">
-          <h3 class="section-title">Guest Information</h3>
-          <table class="info-table">
-            <tr>
-              <td class="label">Full Name</td>
-              <td><%= guest.fullName %></td>
-            </tr>
-            <tr>
-              <td class="label">Phone Number</td>
-              <td><%= guest.phone %></td>
-            </tr>
-            <tr>
-              <td class="label">Email Address</td>
-              <td><%= guest.email || 'N/A' %></td>
-            </tr>
-            <tr>
-              <td class="label">CNIC Number</td>
-              <td><%= guest.cnic %></td>
-            </tr>
-          </table>
-
-          <div class="room-details">
-            <h3 class="section-title">Room Details</h3>
-            <p>
-              <b>Room <%= guest.room.roomNumber %></b> • <%= guest.room.bedType
-              %> • <%= guest.room.category %> • <%= guest.room.view %>
-            </p>
-            <p><b>Rate:</b> Rs<%= guest.room.rate.toLocaleString() %>/night</p>
-          </div>
-
-          <div class="payment-details">
-            <h3 class="section-title">Payment Method</h3>
-            <p style="text-transform: capitalize"><%= guest.paymentMethod %></p>
-          </div>
-        </div>
-
-        <div class="right-column">
-          <h3 class="section-title">Stay Information</h3>
-          <table class="info-table">
-            <tr>
-              <td class="label">Check-in Details</td>
-              <td>
-                <%= new Date(guest.checkInAt).toLocaleDateString() %> • <%=
-                guest.checkInTime %>
-              </td>
-            </tr>
-            <tr>
-              <td class="label">Check-out Details</td>
-              <td>
-                <% if (guest.checkOutAt) { %> <%= new
-                Date(guest.checkOutAt).toLocaleDateString() %> • <%=
-                guest.checkOutTime %> <% } else { %> Guest is currently checked
-                in <% } %>
-              </td>
-            </tr>
-          </table>
-
-          <div class="billing-summary" style="margin-top: 20px">
-            <h3 class="section-title">Billing Summary</h3>
-            <table>
-              <tr>
-                <td>Stay Duration</td>
-                <td class="amount"><%= guest.stayDuration %> day(s)</td>
-              </tr>
-              <tr>
-                <td>Room Rate (per night)</td>
-                <td class="amount">
-                  Rs<%= guest.room.rate.toLocaleString() %>
-                </td>
-              </tr>
-              <tr>
-                <td>Subtotal</td>
-                <td class="amount">
-                  Rs<%= invoice.subtotal.toLocaleString() %>
-                </td>
-              </tr>
-              <% if (invoice.discountAmount > 0) { %>
-              <tr>
-                <td>Discount (<%= guest.discountTitle %>)</td>
-                <td class="amount" style="color: red">
-                  -Rs<%= invoice.discountAmount.toLocaleString() %>
-                </td>
-              </tr>
-              <% } %>
-              <tr class="grand-total">
-                <td>Total Amount</td>
-                <td class="amount">
-                  Rs<%= invoice.grandTotal.toLocaleString() %>
-                </td>
-              </tr>
-            </table>
-          </div>
-        </div>
-      </main>
-
-      <footer class="footer">
-        <p>Thank you for choosing HSQ Towers</p>
-        <p>For any inquiries, please contact our reception desk.</p>
-      </footer>
-    </div>
-  </body>
-</html> -->
-
 <!DOCTYPE html>
 <html>
   <head>
@@ -384,7 +149,14 @@
               <td class="label">CNIC Number</td>
               <td><%= guest.cnic %></td>
             </tr>
-          </table>
+            <tr>
+              <td class="label">Occupancy</td>
+              <td>
+                <%= guest.adults || 1 %> Adults, 
+                <%= guest.infants || 0 %> Infants
+              </td>
+            </tr>
+            </table>
 
           <div class="room-details">
             <h3 class="section-title">Room Details</h3>
@@ -402,7 +174,6 @@
         </div>
 
         <div class="right-column">
-          <!-- START: Simplified Stay Information -->
           <h3 class="section-title">Stay Information</h3>
           <table class="info-table">
             <tr>
@@ -418,9 +189,7 @@
               </td>
             </tr>
           </table>
-          <!-- END: Simplified Stay Information -->
 
-          <!-- START: Updated Billing Summary -->
           <div class="billing-summary" style="margin-top: 20px">
             <h3 class="section-title">Billing Summary</h3>
             <table>
@@ -464,7 +233,6 @@
               </tr>
             </table>
           </div>
-          <!-- END: Updated Billing Summary -->
         </div>
       </main>
 
