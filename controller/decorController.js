@@ -1,10 +1,10 @@
-const DecorPackage = require("../model/decorPackage");
-const DecorOrder = require("../model/decorOrder");
 const Invoice = require("../model/invoice");
 const Guest = require("../model/guest");
+const Reservation = require("../model/reservationmodel");
+const DecorOrder = require("../model/decorOrder");
+const DecorPackage = require("../model/decorPackage");
 const InventoryItem = require("../model/inventoryItem");
 const InventoryTransaction = require("../model/inventoryTransaction");
-const Reservation = require("../model/reservationmodel"); // Import this at the top
 
 // --- HELPER: Validation (Inventory Only) ---
 const validateDecorRequest = async (packageId, forceCreate) => {
@@ -63,6 +63,40 @@ exports.getPackages = async (req, res) => {
   }
 };
 
+// --- GET GUESTS WITH ACTIVE DECOR ---
+exports.getActiveDecorOrders = async (req, res) => {
+  try {
+    // 1. Find all orders that have a Guest ID attached
+    const allOrders = await DecorOrder.find({ guest: { $ne: null } })
+      .populate({
+        path: 'guest',
+        match: { status: 'checked-in' }, // <--- KEY FILTER: Only currently active guests
+        select: 'fullName room status phone',
+        populate: { 
+            path: 'room', 
+            select: 'roomNumber' 
+        }
+      })
+      .populate('package', 'title description price images')
+      .sort({ createdAt: -1 });
+
+    // 2. Filter out nulls
+    // (Mongoose .populate returns 'null' if the 'match' condition fails, 
+    // so we filter those out to leave only the active ones)
+    const activeOrders = allOrders.filter(order => order.guest !== null);
+
+    res.status(200).json({ 
+        success: true, 
+        count: activeOrders.length, 
+        data: activeOrders 
+    });
+
+  } catch (err) {
+    console.error("Get Active Decor Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 // --- RECEPTIONIST: Create Order (Simplified) ---
 exports.createOrder = async (req, res) => {
   try {
@@ -106,66 +140,6 @@ exports.createOrder = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
-
-// --- RECEPTIONIST: Bill Order (Negative Inventory Allowed) ---
-// exports.completeAndBillOrder = async (req, res) => {
-//   try {
-//     const { orderId } = req.body;
-//     const order = await DecorOrder.findById(orderId).populate('package');
-
-//     if (!order) return res.status(404).json({ message: "Order not found" });
-//     if (order.status === 'billed') return res.status(400).json({ message: "Already billed" });
-
-//     // 1. DEDUCT INVENTORY
-//     const decorPkg = await DecorPackage.findById(order.package).populate("inventoryRequirements.item");
-    
-//     // --- FIX IS HERE: Changed loop variable from 'req' to 'requirement' ---
-//     for (const requirement of decorPkg.inventoryRequirements) {
-        
-//         await InventoryTransaction.create({
-//             item: requirement.item._id, // Updated variable name
-//             transactionType: "usage",
-//             quantity: requirement.quantity, // Updated variable name
-//             reason: `Decor Package: ${decorPkg.title}`,
-//             createdBy: req.user.userId // Now 'req' refers to Express Request again correctly
-//         });
-
-//         await InventoryItem.findByIdAndUpdate(requirement.item._id, { 
-//             $inc: { quantityOnHand: -requirement.quantity } 
-//         });
-//     }
-//     // ----------------------------------------------------------------------
-
-//     // 2. ADD TO INVOICE
-//     const invoice = await Invoice.findOne({ guest: order.guest, status: 'pending' });
-    
-//     if (invoice) {
-//         invoice.items.push({
-//             description: `Decor Service: ${decorPkg.title}`,
-//             quantity: 1,
-//             unitPrice: order.price,
-//             total: order.price
-//         });
-
-//         invoice.subtotal += order.price;
-//         const serviceTax = Math.round((order.price * invoice.taxRate) / 100);
-//         invoice.taxAmount += serviceTax;
-//         invoice.grandTotal = invoice.subtotal + invoice.taxAmount - invoice.discountAmount - (invoice.additionaldiscount || 0);
-        
-//         await invoice.save();
-//     }
-
-//     // 3. FINALIZE
-//     order.status = 'billed';
-//     await order.save();
-
-//     res.status(200).json({ success: true, message: "Stock deducted & Invoice updated." });
-
-//   } catch (err) {
-//     console.error("Billing Error:", err);
-//     res.status(500).json({ success: false, error: err.message });
-//   }
-// };
 
 exports.completeAndBillOrder = async (req, res) => {
   try {
@@ -261,3 +235,4 @@ exports.completeAndBillOrder = async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 };
+

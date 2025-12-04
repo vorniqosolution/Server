@@ -8,6 +8,7 @@ router.use(authenticate);
 // --- Admin Routes ---
 router.post("/create-package", decorController.createPackage);
 router.get("/get-packages", decorController.getPackages);
+router.get("/active-orders", decorController.getActiveDecorOrders);
 
 // --- Receptionist Routes ---
 router.post("/create-order", decorController.createOrder);
