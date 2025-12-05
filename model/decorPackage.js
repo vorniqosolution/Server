@@ -14,7 +14,7 @@ const decorPackageSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
-    isActive: { type: Boolean, default: true },
+    isCustom: { type: Boolean, default: true },
     inventoryRequirements: [
       {
         item: { type: mongoose.Schema.Types.ObjectId, ref: "InventoryItem" },
