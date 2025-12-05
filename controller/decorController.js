@@ -5,8 +5,8 @@ const DecorOrder = require("../model/decorOrder");
 const DecorPackage = require("../model/decorPackage");
 const InventoryItem = require("../model/inventoryItem");
 const InventoryTransaction = require("../model/inventoryTransaction");
+const { uploadImageToS3, deleteImageFromS3 } = require("../service/imageUploadService"); 
 
-// --- HELPER: Validation (Inventory Only) ---
 const validateDecorRequest = async (packageId, forceCreate) => {
   const decorPkg = await DecorPackage.findById(packageId).populate(
     "inventoryRequirements.item"
@@ -31,26 +31,156 @@ const validateDecorRequest = async (packageId, forceCreate) => {
   return decorPkg;
 };
 
-// --- ADMIN: Create Package ---
+const parseRequirements = (reqData) => {
+    if (!reqData) return [];
+    try {
+        // If it's already an object/array (rare in form-data but possible), return it
+        if (typeof reqData === 'object') return reqData;
+        // Otherwise, parse the string
+        return JSON.parse(reqData);
+    } catch (e) {
+        throw new Error("Invalid format for inventoryRequirements. Must be valid JSON string.");
+    }
+};
+
 exports.createPackage = async (req, res) => {
   try {
-    const { title, description, price, inventoryRequirements } = req.body;
+    const { title, description, price, inventoryRequirements, isCustom } = req.body;
 
+    // --- A. Upload Images to S3 ---
+    let imageUrls = [];
+    if (req.files && req.files.length > 0) {
+        // We use the new S3 helper with the "images/decor" folder
+        const uploadPromises = req.files.map(file => uploadImageToS3(file, "images/decor"));
+        imageUrls = await Promise.all(uploadPromises);
+    }
+
+    // --- B. Parse & Validate Inventory (THE FIX IS HERE) ---
+    let parsedRequirements = [];
+    if (inventoryRequirements) {
+        // USE THE HELPER FUNCTION HERE
+        parsedRequirements = parseRequirements(inventoryRequirements); 
+        
+        // NOW we check if it is an array
+        if (!Array.isArray(parsedRequirements)) {
+            return res.status(400).json({ message: "Inventory requirements must be a list (array)." });
+        }
+        
+        for (const reqItem of parsedRequirements) {
+            if (!reqItem.item || !reqItem.quantity) {
+                return res.status(400).json({ message: "Ingredients need Item ID and Quantity." });
+            }
+        }
+    }
+
+    // --- C. Save to Database ---
     const newPackage = await DecorPackage.create({
       title,
       description,
       price,
-      inventoryRequirements: inventoryRequirements || [],
+      images: imageUrls,
+      inventoryRequirements: parsedRequirements, // Save the parsed array, not the string
+      isCustom: isCustom === 'true' || isCustom === true,
       createdBy: req.user.userId,
     });
 
     res.status(201).json({ success: true, data: newPackage });
+
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ message: "Title already exists." });
+    console.error("Create Decor Error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+exports.updatePackage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, price, inventoryRequirements, keepOldImages } = req.body;
+
+    const oldPackage = await DecorPackage.findById(id);
+    if (!oldPackage) return res.status(404).json({ message: "Package not found" });
+
+    const updates = {};
+    if (title) updates.title = title;
+    if (description) updates.description = description;
+    if (price) updates.price = price;
+
+    // USE THE HELPER FUNCTION HERE TOO
+    if (inventoryRequirements) {
+        updates.inventoryRequirements = parseRequirements(inventoryRequirements);
+    }
+
+    // Handle Images
+    if (req.files && req.files.length > 0) {
+        const uploadPromises = req.files.map(file => uploadImageToS3(file, "images/decor"));
+        const newImageUrls = await Promise.all(uploadPromises);
+        
+        if (keepOldImages === 'true') {
+             updates.$push = { images: { $each: newImageUrls } };
+        } else {
+             // Delete old images first
+             if (oldPackage.images && oldPackage.images.length > 0) {
+                 for (const oldUrl of oldPackage.images) {
+                     await deleteImageFromS3(oldUrl); 
+                 }
+             }
+             updates.images = newImageUrls;
+        }
+    }
+
+    const updatedPackage = await DecorPackage.findByIdAndUpdate(
+      id, updates, { new: true, runValidators: true }
+    ).populate("inventoryRequirements.item");
+
+    res.status(200).json({ success: true, message: "Updated successfully", data: updatedPackage });
+
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
-// --- ADMIN: Get Packages ---
+exports.deletePackage = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. SAFETY CHECK: Is this package used in any existing orders?
+    const usageCount = await DecorOrder.countDocuments({ package: id });
+
+    if (usageCount > 0) {
+      // Soft Delete (Archive)
+      const archivedPackage = await DecorPackage.findByIdAndUpdate(
+        id, 
+        { isActive: false }, 
+        { new: true }
+      );
+
+      if (!archivedPackage) return res.status(404).json({ message: "Package not found" });
+
+      return res.status(200).json({
+        success: true,
+        type: "archived",
+        message: `Package archived. It is linked to ${usageCount} past orders, so we hid it instead of deleting it.`
+      });
+
+    } else {
+      // Hard Delete
+      const deletedPackage = await DecorPackage.findByIdAndDelete(id);
+      
+      if (!deletedPackage) return res.status(404).json({ message: "Package not found" });
+
+      return res.status(200).json({
+        success: true,
+        type: "deleted",
+        message: "Package permanently deleted."
+      });
+    }
+
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
 exports.getPackages = async (req, res) => {
   try {
     const packages = await DecorPackage.find({ isActive: true }).populate(
@@ -63,7 +193,6 @@ exports.getPackages = async (req, res) => {
   }
 };
 
-// --- GET GUESTS WITH ACTIVE DECOR ---
 exports.getActiveDecorOrders = async (req, res) => {
   try {
     // 1. Find all orders that have a Guest ID attached
@@ -97,7 +226,6 @@ exports.getActiveDecorOrders = async (req, res) => {
   }
 };
 
-// --- RECEPTIONIST: Create Order (Simplified) ---
 exports.createOrder = async (req, res) => {
   try {
     const { packageId, guestId, reservationId, instructions, forceCreate } =
