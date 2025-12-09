@@ -45,12 +45,14 @@ const invoiceSchema = new mongoose.Schema(
       phone: { type: String, required: true },
       cnic: { type: String, required: true },
       adults: { type: Number, default: 1 },
-      infants: { type: Number, default: 0 }
+      infants: { type: Number, default: 0 },
     },
     roomDetails: {
       roomNumber: { type: String, required: true },
       category: { type: String, required: true },
     },
+    advanceAdjusted: { type: Number, default: 0 },
+    balanceDue: { type: Number },
   },
   { timestamps: true }
 );
@@ -62,26 +64,53 @@ invoiceSchema.pre("save", async function (next) {
   next();
 });
 
-invoiceSchema.statics.fetchRevenueByPeriod = async function ({ period, year, month, week, day }) {
+invoiceSchema.statics.fetchRevenueByPeriod = async function ({
+  period,
+  year,
+  month,
+  week,
+  day,
+}) {
   const matchStage = {};
   switch (period) {
     case "yearly":
-      matchStage.checkInAt = { $gte: new Date(year, 0, 1), $lt: new Date(year + 1, 0, 1) };
+      matchStage.checkInAt = {
+        $gte: new Date(year, 0, 1),
+        $lt: new Date(year + 1, 0, 1),
+      };
       break;
     case "monthly":
       if (!month) throw new Error("Month is required for monthly period.");
-      matchStage.checkInAt = { $gte: new Date(year, month - 1, 1), $lt: new Date(year, month, 1) };
+      matchStage.checkInAt = {
+        $gte: new Date(year, month - 1, 1),
+        $lt: new Date(year, month, 1),
+      };
       break;
     case "daily":
-      if (!month || !day) throw new Error("Month and day are required for daily period.");
-      matchStage.checkInAt = { $gte: new Date(year, month - 1, day), $lt: new Date(year, month - 1, day + 1) };
+      if (!month || !day)
+        throw new Error("Month and day are required for daily period.");
+      matchStage.checkInAt = {
+        $gte: new Date(year, month - 1, day),
+        $lt: new Date(year, month - 1, day + 1),
+      };
       break;
     case "weekly":
       if (!week) throw new Error("Week is required for weekly period.");
       const weeklyResult = await this.aggregate([
-        { $addFields: { week: { $isoWeek: "$checkInAt" }, year: { $isoWeekYear: "$checkInAt" } } },
+        {
+          $addFields: {
+            week: { $isoWeek: "$checkInAt" },
+            year: { $isoWeekYear: "$checkInAt" },
+          },
+        },
         { $match: { week, year } },
-        { $group: { _id: null, totalRevenue: { $sum: "$grandTotal" }, invoiceCount: { $sum: 1 } } },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$grandTotal" },
+            invoiceCount: { $sum: 1 },
+          },
+        },
         { $project: { _id: 0, totalRevenue: 1, invoiceCount: 1 } },
       ]);
       return weeklyResult[0] || { totalRevenue: 0, invoiceCount: 0 };
@@ -90,7 +119,13 @@ invoiceSchema.statics.fetchRevenueByPeriod = async function ({ period, year, mon
   }
   const pipeline = [
     { $match: matchStage },
-    { $group: { _id: null, totalRevenue: { $sum: "$grandTotal" }, invoiceCount: { $sum: 1 } } },
+    {
+      $group: {
+        _id: null,
+        totalRevenue: { $sum: "$grandTotal" },
+        invoiceCount: { $sum: 1 },
+      },
+    },
     { $project: { _id: 0, totalRevenue: 1, invoiceCount: 1 } },
   ];
   const result = await this.aggregate(pipeline);
@@ -126,8 +161,8 @@ invoiceSchema.statics.fetchDiscountedGuests = async function (year, month) {
         checkInAt: { $gte: startDate, $lt: endDate },
         $or: [
           { discountAmount: { $gt: 0 } },
-          { additionaldiscount: { $gt: 0 } }
-        ]
+          { additionaldiscount: { $gt: 0 } },
+        ],
       },
     },
     {

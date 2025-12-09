@@ -11,6 +11,7 @@ const DecorOrder = require("../model/decorOrder");
 const DecorPackage = require("../model/decorPackage");
 const InventoryItem = require("../model/inventoryItem");
 const InventoryTransaction = require("../model/inventoryTransaction");
+const Transaction = require("../model/transactions");
 
 // exports.createGuest = async (req, res) => {
 //   try {
@@ -92,16 +93,16 @@ const InventoryTransaction = require("../model/inventoryTransaction");
 
 //     // --- NEW: Capacity Check Logic ---
 //     if (room.adults < adults) {
-//         return res.status(400).json({ 
-//             success: false, 
-//             message: `Capacity exceeded. Room ${roomNumber} allows max ${room.adults} adults.` 
+//         return res.status(400).json({
+//             success: false,
+//             message: `Capacity exceeded. Room ${roomNumber} allows max ${room.adults} adults.`
 //         });
 //     }
 //     const roomMaxInfants = room.infants || 0;
 //     if (roomMaxInfants < infants) {
-//         return res.status(400).json({ 
-//             success: false, 
-//             message: `Capacity exceeded. Room ${roomNumber} allows max ${roomMaxInfants} infants.` 
+//         return res.status(400).json({
+//             success: false,
+//             message: `Capacity exceeded. Room ${roomNumber} allows max ${roomMaxInfants} infants.`
 //         });
 //     }
 
@@ -131,14 +132,14 @@ const InventoryTransaction = require("../model/inventoryTransaction");
 //     const taxRate = Number(settings?.taxRate ?? 0);
 //     const rate = Number(room.rate) || 0;
 //     const roomTotal = rate * nights;
-    
+
 //     const additionalDiscountAmount = Math.min(
 //       Math.max(0, Number(additionaldiscount) || 0),
 //       roomTotal
 //     );
 //     let stdPct = 0;
 //     let discountTitle = null;
-    
+
 //     if (applyDiscount) {
 //       const validDiscount = await Discount.findOne({
 //         startDate: { $lte: today },
@@ -168,8 +169,8 @@ const InventoryTransaction = require("../model/inventoryTransaction");
 //       email,
 //       room: room._id,
 //       // Save data
-//       adults, 
-//       infants, 
+//       adults,
+//       infants,
 //       // ---------
 //       checkInAt: checkIn,
 //       checkInTime: checkInTimeStr, // FIX: Explicitly set the correct time string
@@ -186,7 +187,7 @@ const InventoryTransaction = require("../model/inventoryTransaction");
 
 //     room.status = "occupied";
 //     await room.save();
-    
+
 //     if (reservationId)
 //       await Reservation.findByIdAndUpdate(reservationId, {
 //         status: "checked-in",
@@ -195,7 +196,7 @@ const InventoryTransaction = require("../model/inventoryTransaction");
 
 //     await Invoice.create({
 //       invoiceNumber: `HSQ-${Date.now()}`,
-//       guest: guest._id, 
+//       guest: guest._id,
 //       items: [
 //         {
 //           description: `Room Rent (${room.category} - #${room.roomNumber})`,
@@ -226,7 +227,7 @@ const InventoryTransaction = require("../model/inventoryTransaction");
 //         category: room.category,
 //       },
 //     });
-    
+
 //     try {
 //       await axios.post(
 //         `${process.env.API_BASE_URL}/api/inventory/checkin`,
@@ -262,41 +263,74 @@ const InventoryTransaction = require("../model/inventoryTransaction");
 exports.createGuest = async (req, res) => {
   try {
     let {
-      fullName, address, phone, cnic, email, roomNumber,
-      adults = 1, infants = 0,
-      checkInDate, checkOutDate, paymentMethod,
-      applyDiscount = false, additionaldiscount = 0,
+      fullName,
+      address,
+      phone,
+      cnic,
+      email,
+      roomNumber,
+      adults = 1,
+      infants = 0,
+      checkInDate,
+      checkOutDate,
+      paymentMethod,
+      applyDiscount = false,
+      additionaldiscount = 0,
       reservationId,
       // For Walk-ins who buy decor immediately at desk
-      decorPackageId 
+      decorPackageId,
     } = req.body;
 
     // --- 1. VALIDATIONS ---
-    if (!checkInDate || !checkOutDate) return res.status(400).json({ success: false, message: "Check-in/out dates required." });
+    if (!checkInDate || !checkOutDate)
+      return res
+        .status(400)
+        .json({ success: false, message: "Check-in/out dates required." });
 
     const checkInMoment = new Date();
     const checkInTimeStr = checkInMoment.toTimeString().slice(0, 5);
     const checkIn = new Date(`${checkInDate}T${checkInTimeStr}:00.000`);
     const checkOut = new Date(`${checkOutDate}T00:00:00.000Z`);
 
-    if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) return res.status(400).json({ success: false, message: "Invalid dates." });
-    if (checkOut <= checkIn) return res.status(400).json({ success: false, message: "Check-out must be after check-in." });
+    if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime()))
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid dates." });
+    if (checkOut <= checkIn)
+      return res
+        .status(400)
+        .json({ success: false, message: "Check-out must be after check-in." });
 
     const today = new Date();
     const checkInDay = new Date(checkInDate);
     today.setUTCHours(0, 0, 0, 0);
     checkInDay.setUTCHours(0, 0, 0, 0);
 
-    if (checkInDay.getTime() !== today.getTime()) return res.status(400).json({ success: false, message: "Check-in must be for today." });
+    if (checkInDay.getTime() !== today.getTime())
+      return res
+        .status(400)
+        .json({ success: false, message: "Check-in must be for today." });
 
     const room = await Room.findOne({ roomNumber });
-    if (!room) return res.status(404).json({ success: false, message: "Room not found" });
-    if (room.status === "occupied" || room.status === "maintenance") return res.status(400).json({ success: false, message: `Room is ${room.status}.` });
+    if (!room)
+      return res
+        .status(404)
+        .json({ success: false, message: "Room not found" });
+    if (room.status === "occupied" || room.status === "maintenance")
+      return res
+        .status(400)
+        .json({ success: false, message: `Room is ${room.status}.` });
 
     // Capacity Check
-    if (room.adults < adults) return res.status(400).json({ success: false, message: "Adult capacity exceeded." });
+    if (room.adults < adults)
+      return res
+        .status(400)
+        .json({ success: false, message: "Adult capacity exceeded." });
     const roomMaxInfants = room.infants || 0;
-    if (roomMaxInfants < infants) return res.status(400).json({ success: false, message: "Infant capacity exceeded." });
+    if (roomMaxInfants < infants)
+      return res
+        .status(400)
+        .json({ success: false, message: "Infant capacity exceeded." });
 
     // Reservation Overlap Check
     const blockingReservation = await Reservation.findOne({
@@ -306,12 +340,43 @@ exports.createGuest = async (req, res) => {
       endAt: { $gt: checkInDay },
     });
 
-    if (blockingReservation && (!reservationId || blockingReservation._id.toString() !== reservationId)) {
-      return res.status(400).json({ success: false, message: "Room is reserved for another guest." });
+    if (
+      blockingReservation &&
+      (!reservationId || blockingReservation._id.toString() !== reservationId)
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Room is reserved for another guest.",
+        });
     }
 
+    // 👇 PASTE THIS BLOCK HERE 👇
+    // ============================================================
+    // NEW LOGIC: CHECK RESERVATION WALLET
+    // ============================================================
+    let advanceFromReservation = 0;
+
+    if (reservationId) {
+      // Fetch all transactions linked to this Reservation ID
+      const txHistory = await Transaction.find({ reservation: reservationId });
+
+      // Calculate the Net Balance (Money In - Money Out)
+      txHistory.forEach((tx) => {
+        if (tx.type === "advance") advanceFromReservation += tx.amount;
+        if (tx.type === "refund") advanceFromReservation -= tx.amount;
+      });
+
+      // Safety: Ensure we don't carry over a negative number
+      advanceFromReservation = Math.max(0, advanceFromReservation);
+    }
+    // 👆 --------------------- 👆
+
     // --- 2. CALCULATE BASE ROOM CHARGES ---
-    const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+    const nights = Math.ceil(
+      (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
+    );
     const settings = await Setting.findById("global_settings").lean();
     const taxRate = Number(settings?.taxRate ?? 0);
     const rate = Number(room.rate) || 0;
@@ -319,13 +384,25 @@ exports.createGuest = async (req, res) => {
 
     // --- 3. CREATE GUEST ---
     const guest = await Guest.create({
-      fullName, address, phone, cnic, email,
+      fullName,
+      address,
+      phone,
+      cnic,
+      email,
       room: room._id,
-      adults, infants,
-      checkInAt: checkIn, checkInTime: checkInTimeStr, checkOutAt: checkOut,
-      stayDuration: nights, paymentMethod, applyDiscount,
-      totalRent: 0, gst: 0, additionaldiscount: 0, // Will update these after calculating decor
+      adults,
+      infants,
+      checkInAt: checkIn,
+      checkInTime: checkInTimeStr,
+      checkOutAt: checkOut,
+      stayDuration: nights,
+      paymentMethod,
+      applyDiscount,
+      totalRent: 0,
+      gst: 0,
+      additionaldiscount: 0, // Will update these after calculating decor
       createdBy: req.user.userId,
+      advancePayment: advanceFromReservation,
     });
 
     // Lock Room
@@ -334,7 +411,10 @@ exports.createGuest = async (req, res) => {
 
     // Link Reservation if exists
     if (reservationId) {
-      await Reservation.findByIdAndUpdate(reservationId, { status: "checked-in", guest: guest._id });
+      await Reservation.findByIdAndUpdate(reservationId, {
+        status: "checked-in",
+        guest: guest._id,
+      });
     }
 
     // --- 4. PREPARE INVOICE ITEMS (THE UNIFIED LOGIC) ---
@@ -351,94 +431,128 @@ exports.createGuest = async (req, res) => {
 
     // SCENARIO A: Walk-In Guest buys Decor NOW
     if (decorPackageId) {
-        const decorPkg = await DecorPackage.findById(decorPackageId).populate("inventoryRequirements.item");
-        if (decorPkg) {
-            // Add to List
-            invoiceItems.push({
-                description: `Decor: ${decorPkg.title}`,
-                quantity: 1, unitPrice: decorPkg.price, total: decorPkg.price
-            });
-            decorTotal += decorPkg.price;
+      const decorPkg = await DecorPackage.findById(decorPackageId).populate(
+        "inventoryRequirements.item"
+      );
+      if (decorPkg) {
+        // Add to List
+        invoiceItems.push({
+          description: `Decor: ${decorPkg.title}`,
+          quantity: 1,
+          unitPrice: decorPkg.price,
+          total: decorPkg.price,
+        });
+        decorTotal += decorPkg.price;
 
-            // Create Billed Order
-            await DecorOrder.create({
-                package: decorPkg._id,
-                guest: guest._id,
-                price: decorPkg.price,
-                status: 'billed',
-                createdBy: req.user.userId
-            });
+        // Create Billed Order
+        await DecorOrder.create({
+          package: decorPkg._id,
+          guest: guest._id,
+          price: decorPkg.price,
+          status: "billed",
+          createdBy: req.user.userId,
+        });
 
-            // Deduct Inventory
-            for (const reqItem of decorPkg.inventoryRequirements) {
-                if(reqItem.item) {
-                    await InventoryTransaction.create({
-                        item: reqItem.item._id, transactionType: "usage", quantity: reqItem.quantity,
-                        reason: `Decor (Walk-in): ${decorPkg.title}`, createdBy: req.user.userId
-                    });
-                    await InventoryItem.findByIdAndUpdate(reqItem.item._id, { $inc: { quantityOnHand: -reqItem.quantity } });
-                }
-            }
+        // Deduct Inventory
+        for (const reqItem of decorPkg.inventoryRequirements) {
+          if (reqItem.item) {
+            await InventoryTransaction.create({
+              item: reqItem.item._id,
+              transactionType: "usage",
+              quantity: reqItem.quantity,
+              reason: `Decor (Walk-in): ${decorPkg.title}`,
+              createdBy: req.user.userId,
+            });
+            await InventoryItem.findByIdAndUpdate(reqItem.item._id, {
+              $inc: { quantityOnHand: -reqItem.quantity },
+            });
+          }
         }
+      }
     }
 
     // SCENARIO B: Reservation Guest has PRE-BOOKED Decor
     if (reservationId) {
-        const pendingOrders = await DecorOrder.find({ 
-            reservation: reservationId, 
-            status: 'pending' 
-        }).populate('package');
+      const pendingOrders = await DecorOrder.find({
+        reservation: reservationId,
+        status: "pending",
+      }).populate("package");
 
-        for (const order of pendingOrders) {
-            if (!order.package) continue;
+      for (const order of pendingOrders) {
+        if (!order.package) continue;
 
-            // Add to List
-            invoiceItems.push({
-                description: `Pre-booked Decor: ${order.package.title}`,
-                quantity: 1, unitPrice: order.price, total: order.price
-            });
-            decorTotal += order.price;
+        // Add to List
+        invoiceItems.push({
+          description: `Pre-booked Decor: ${order.package.title}`,
+          quantity: 1,
+          unitPrice: order.price,
+          total: order.price,
+        });
+        decorTotal += order.price;
 
-            // Link to Guest & Bill
-            order.guest = guest._id;
-            order.status = 'billed';
-            await order.save();
+        // Link to Guest & Bill
+        order.guest = guest._id;
+        order.status = "billed";
+        await order.save();
 
-            // Deduct Inventory
-            const fullPkg = await DecorPackage.findById(order.package._id).populate("inventoryRequirements.item");
-            if (fullPkg && fullPkg.inventoryRequirements) {
-                for (const reqItem of fullPkg.inventoryRequirements) {
-                    if (reqItem.item) {
-                        await InventoryTransaction.create({
-                            item: reqItem.item._id, transactionType: "usage", quantity: reqItem.quantity,
-                            reason: `Decor (Resv): ${fullPkg.title}`, createdBy: req.user.userId
-                        });
-                        await InventoryItem.findByIdAndUpdate(reqItem.item._id, { $inc: { quantityOnHand: -reqItem.quantity } });
-                    }
-                }
+        // Deduct Inventory
+        const fullPkg = await DecorPackage.findById(order.package._id).populate(
+          "inventoryRequirements.item"
+        );
+        if (fullPkg && fullPkg.inventoryRequirements) {
+          for (const reqItem of fullPkg.inventoryRequirements) {
+            if (reqItem.item) {
+              await InventoryTransaction.create({
+                item: reqItem.item._id,
+                transactionType: "usage",
+                quantity: reqItem.quantity,
+                reason: `Decor (Resv): ${fullPkg.title}`,
+                createdBy: req.user.userId,
+              });
+              await InventoryItem.findByIdAndUpdate(reqItem.item._id, {
+                $inc: { quantityOnHand: -reqItem.quantity },
+              });
             }
+          }
         }
+      }
     }
 
     // --- 5. FINAL CALCULATIONS (Using new totals) ---
     const finalSubtotal = roomTotal + decorTotal;
-    
+
     // Discounts
-    const discountAmtNum = Math.min(Math.max(0, Number(additionaldiscount) || 0), finalSubtotal);
+    const discountAmtNum = Math.min(
+      Math.max(0, Number(additionaldiscount) || 0),
+      finalSubtotal
+    );
     let stdPct = 0;
     let discountTitle = null;
     if (applyDiscount) {
-      const validDiscount = await Discount.findOne({ startDate: { $lte: today }, endDate: { $gte: today } });
+      const validDiscount = await Discount.findOne({
+        startDate: { $lte: today },
+        endDate: { $gte: today },
+      });
       if (validDiscount) {
-          stdPct = Number(validDiscount.percentage) || 0;
-          discountTitle = validDiscount.title;
+        stdPct = Number(validDiscount.percentage) || 0;
+        discountTitle = validDiscount.title;
       }
     }
     const stdDiscountAmt = Math.round(finalSubtotal * (stdPct / 100));
-    
-    const invoiceSubtotalBeforeTax = Math.max(0, finalSubtotal - stdDiscountAmt - discountAmtNum);
-    const invoiceGstAmount = Math.round((invoiceSubtotalBeforeTax * taxRate) / 100);
+
+    const invoiceSubtotalBeforeTax = Math.max(
+      0,
+      finalSubtotal - stdDiscountAmt - discountAmtNum
+    );
+    const invoiceGstAmount = Math.round(
+      (invoiceSubtotalBeforeTax * taxRate) / 100
+    );
     const invoiceGrandTotal = invoiceSubtotalBeforeTax + invoiceGstAmount;
+
+     // 👇 PASTE THIS LINE HERE (To Calculate Balance) 👇
+    const balanceDue = Math.max(0, invoiceGrandTotal - advanceFromReservation);
+    // 👆 ------------------------------------------- 👆
+
 
     // Update Guest record with final money stats
     guest.totalRent = invoiceGrandTotal;
@@ -452,7 +566,7 @@ exports.createGuest = async (req, res) => {
       invoiceNumber: `HSQ-${Date.now()}`,
       guest: guest._id,
       items: invoiceItems, // <--- Contains both Room & Decor items
-      
+
       subtotal: finalSubtotal,
       discountAmount: stdDiscountAmt,
       additionaldiscount: discountAmtNum,
@@ -460,8 +574,15 @@ exports.createGuest = async (req, res) => {
       taxAmount: invoiceGstAmount,
       grandTotal: invoiceGrandTotal,
 
+      // 👇 PASTE THESE LINES HERE (To Save to Invoice) 👇
+      advanceAdjusted: advanceFromReservation,
+      balanceDue: balanceDue,
+      status: balanceDue === 0 ? "paid" : "pending",
+      // 👆 ------------------------------------------ 👆
+
+
       dueDate: checkOut,
-      status: "pending",
+      // status: "pending",
       createdBy: req.user.userId,
       checkInAt: guest.checkInAt,
       guestDetails: {
@@ -481,16 +602,34 @@ exports.createGuest = async (req, res) => {
     try {
       await axios.post(
         `${process.env.API_BASE_URL}/api/inventory/checkin`,
-        { roomId: room._id, guestId: guest._id, source: reservationId ? "reservation" : "walkin" },
-        { headers: { Cookie: req.headers.cookie, Authorization: req.headers.authorization } }
+        {
+          roomId: room._id,
+          guestId: guest._id,
+          source: reservationId ? "reservation" : "walkin",
+        },
+        {
+          headers: {
+            Cookie: req.headers.cookie,
+            Authorization: req.headers.authorization,
+          },
+        }
       );
-    } catch (invErr) { console.error("Auto-Inventory failed:", invErr?.message); }
+    } catch (invErr) {
+      console.error("Auto-Inventory failed:", invErr?.message);
+    }
 
-    return res.status(201).json({ success: true, message: "Guest checked in successfully", data: { guest } });
-
+    return res
+      .status(201)
+      .json({
+        success: true,
+        message: "Guest checked in successfully",
+        data: { guest },
+      });
   } catch (err) {
     console.error("createGuest Error:", err);
-    return res.status(500).json({ success: false, message: "Server error", error: err.message });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };
 
@@ -639,7 +778,16 @@ exports.deleteGuest = async (req, res) => {
 exports.UpdateGuestById = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fullName, email, phone, cnic, paymentMethod, address, adults, infants } = req.body;
+    const {
+      fullName,
+      email,
+      phone,
+      cnic,
+      paymentMethod,
+      address,
+      adults,
+      infants,
+    } = req.body;
 
     const updatedGuest = await Guest.findByIdAndUpdate(
       id,
@@ -650,8 +798,8 @@ exports.UpdateGuestById = async (req, res) => {
         cnic: cnic,
         paymentMethod: paymentMethod,
         address: address,
-      ...(adults !== undefined && { adults }),
-      ...(infants !== undefined && { infants }),
+        ...(adults !== undefined && { adults }),
+        ...(infants !== undefined && { infants }),
       },
       { new: true, runValidators: true }
     );
@@ -678,29 +826,38 @@ exports.getGuestActivityByDate = async (req, res) => {
     const { date } = req.query;
 
     if (!date) {
-      return res.status(400).json({ success: false, message: "Date is required. Format: YYYY-MM-DD" });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Date is required. Format: YYYY-MM-DD",
+        });
     }
 
     const dayStart = new Date(`${date}T00:00:00.000Z`);
     const dayEnd = new Date(`${date}T23:59:59.999Z`);
-    
-    const queries = {
-      checkIns: Guest.find({ 
-        checkInAt: { $gte: dayStart, $lte: dayEnd } 
-      }).populate('room', 'roomNumber category').lean(),
 
-      checkOuts: Guest.find({ 
-        status: 'checked-out', 
-        checkOutAt: { $gte: dayStart, $lte: dayEnd } 
-      }).populate('room', 'roomNumber category').lean(),
+    const queries = {
+      checkIns: Guest.find({
+        checkInAt: { $gte: dayStart, $lte: dayEnd },
+      })
+        .populate("room", "roomNumber category")
+        .lean(),
+
+      checkOuts: Guest.find({
+        status: "checked-out",
+        checkOutAt: { $gte: dayStart, $lte: dayEnd },
+      })
+        .populate("room", "roomNumber category")
+        .lean(),
     };
-    
+
     // Execute both queries in parallel for speed
     const [checkIns, checkOuts] = await Promise.all(Object.values(queries));
 
     // Prepare the data payload with categorized lists
-    const responseData = { 
-      checkIns, 
+    const responseData = {
+      checkIns,
       checkOuts,
     };
 
@@ -711,9 +868,10 @@ exports.getGuestActivityByDate = async (req, res) => {
     };
 
     res.status(200).json({ success: true, date, summary, data: responseData });
-
   } catch (err) {
     console.error("Error in getGuestActivityByDate:", err);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
   }
 };

@@ -63,6 +63,9 @@ const guestSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    // 👇 MAKE SURE THIS IS HERE 👇
+  advancePayment: { type: Number, default: 0 },
+  // 👆 --------------------- 👆
   },
 
   { timestamps: true }
