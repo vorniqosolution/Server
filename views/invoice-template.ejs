@@ -90,10 +90,12 @@
       .billing-summary .amount {
         text-align: right;
       }
-      .billing-summary .grand-total {
+      /* Modified: Used for the final balance row now */
+      .billing-summary .final-row {
         font-weight: bold;
         font-size: 1.2em;
         background-color: #f7f7f7;
+        border-top: 2px solid #ddd;
       }
       .footer {
         text-align: center;
@@ -119,13 +121,10 @@
       <section class="guest-intro">
         <h3><%= guest.fullName %></h3>
         <p>
-          <span
-            >Guest ID: <%= guest._id.toString().slice(-8).toUpperCase() %></span
-          >
-          <span style="font-weight: bold; color: green"
-            ><%= guest.status === 'checked-in' ? 'Active Stay' : 'Checked Out'
-            %></span
-          >
+          <span>Guest ID: <%= guest._id.toString().slice(-8).toUpperCase() %></span>
+          <span style="font-weight: bold; color: <%= guest.status === 'checked-in' ? 'green' : '#666' %>">
+            <%= guest.status === 'checked-in' ? 'Active Stay' : 'Checked Out' %>
+          </span>
         </p>
       </section>
 
@@ -156,13 +155,12 @@
                 <%= guest.infants || 0 %> Infants
               </td>
             </tr>
-            </table>
+          </table>
 
           <div class="room-details">
             <h3 class="section-title">Room Details</h3>
             <p>
-              <b>Room <%= guest.room.roomNumber %></b> • <%= guest.room.bedType
-              %> • <%= guest.room.category %> • <%= guest.room.view %>
+              <b>Room <%= guest.room.roomNumber %></b> • <%= guest.room.bedType %> • <%= guest.room.category %> • <%= guest.room.view %>
             </p>
             <p><b>Rate:</b> Rs<%= guest.room.rate.toLocaleString() %>/night</p>
           </div>
@@ -193,13 +191,15 @@
           <div class="billing-summary" style="margin-top: 20px">
             <h3 class="section-title">Billing Summary</h3>
             <table>
+              <!-- Invoice Items -->
               <% invoice.items.forEach(item => { %>
               <tr>
-                <td><%= item.description %> (<%= item.quantity %> nights)</td>
+                <td><%= item.description %> (<%= item.quantity %>)</td>
                 <td class="amount">Rs<%= item.total.toLocaleString() %></td>
               </tr>
               <% }) %>
 
+              <!-- Subtotal -->
               <tr>
                 <td>Subtotal</td>
                 <td class="amount">
@@ -207,6 +207,7 @@
                 </td>
               </tr>
               
+              <!-- Discounts -->
               <% if (invoice.discountAmount > 0) { %>
               <tr>
                 <td>Discount (<%= guest.discountTitle || 'Standard' %>)</td>
@@ -225,12 +226,32 @@
               </tr>
               <% } %>
               
-              <tr class="grand-total">
-                <td>Total Amount</td>
-                <td class="amount">
+              <!-- Grand Total (Calculated Bill) -->
+              <tr>
+                <td style="font-weight: bold; border-top: 1px solid #ddd;">Total Bill</td>
+                <td class="amount" style="font-weight: bold; border-top: 1px solid #ddd;">
                   Rs<%= invoice.grandTotal.toLocaleString() %>
                 </td>
               </tr>
+
+              <!-- Advance / Paid -->
+              <% if (invoice.advanceAdjusted > 0) { %>
+              <tr>
+                <td style="color: #27ae60;">Less: Advance/Paid</td>
+                <td class="amount" style="color: #27ae60;">
+                  -Rs<%= invoice.advanceAdjusted.toLocaleString() %>
+                </td>
+              </tr>
+              <% } %>
+
+              <!-- Balance Due (The Final Line) -->
+              <tr class="final-row">
+                <td><%= invoice.balanceDue === 0 ? 'Net Balance' : 'Balance Due' %></td>
+                <td class="amount" style="color: <%= invoice.balanceDue > 0 ? '#c0392b' : '#27ae60' %>">
+                  Rs<%= invoice.balanceDue ? invoice.balanceDue.toLocaleString() : '0' %>
+                </td>
+              </tr>
+
             </table>
           </div>
         </div>
@@ -239,6 +260,10 @@
       <footer class="footer">
         <p>Thank you for choosing HSQ Towers</p>
         <p>For any inquiries, please contact our reception desk.</p>
+        
+        <% if (invoice.balanceDue === 0) { %>
+            <p style="margin-top: 10px; font-weight: bold; color: green; border: 2px solid green; display: inline-block; padding: 5px 15px; border-radius: 4px;">PAID IN FULL</p>
+        <% } %>
       </footer>
     </div>
   </body>

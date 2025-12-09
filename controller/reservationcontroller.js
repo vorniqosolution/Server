@@ -1,106 +1,7 @@
 const Reservation = require("../model/reservationmodel");
 const Room = require("../model/room");
 const Guest = require("../model/guest");
-
-// exports.createReservation = async (req, res) => {
-//   try {
-//     const {
-//       fullName,
-//       address,
-//       phone,
-//       email,
-//       cnic,
-//       roomNumber,
-//       checkin,
-//       checkout,
-//     } = req.body;
-//     if (
-//       !fullName ||
-//       !address ||
-//       !phone ||
-//       !cnic ||
-//       !roomNumber ||
-//       !checkin ||
-//       !checkout
-//     ) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Please provide all required fields.",
-//       });
-//     }
-
-//     const room = await Room.findOne({ roomNumber });
-//     if (!room)
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Room not found" });
-//     if (room.status === "maintenance")
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Room is under maintenance." });
-
-//     // Use the reliable, native JavaScript UTC date parsing
-//     const startAt = new Date(`${checkin}T00:00:00.000Z`);
-//     const endAt = new Date(`${checkout}T00:00:00.000Z`);
-
-//     if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "Invalid date format. Please use YYYY-MM-DD.",
-//       });
-//     }
-
-//     if (endAt <= startAt)
-//       return res.status(400).json({
-//         success: false,
-//         message: "Checkout date must be after check-in date",
-//       });
-
-//     // The rest of the logic is already robust
-//     const existingReservation = await Reservation.findOne({
-//       room: room._id,
-//       status: { $in: ["reserved", "confirmed"] },
-//       startAt: { $lt: endAt },
-//       endAt: { $gt: startAt },
-//     });
-//     if (existingReservation)
-//       return res.status(400).json({
-//         success: false,
-//         message: `Room ${roomNumber} already has a reservation during this period.`,
-//       });
-
-//     const overlappingGuest = await Guest.findOne({
-//       room: room._id,
-//       status: "checked-in",
-//       checkInAt: { $lt: endAt },
-//       checkOutAt: { $gt: startAt },
-//     });
-//     if (overlappingGuest)
-//       return res.status(400).json({
-//         success: false,
-//         message: `Room ${roomNumber} is occupied by a guest during this period.`,
-//       });
-
-//     const reservation = await Reservation.create({
-//       fullName,
-//       address,
-//       phone,
-//       email,
-//       cnic,
-//       room: room._id,
-//       startAt,
-//       endAt,
-//       createdBy: req.user.userId,
-//     });
-
-//     return res.status(201).json({ success: true, data: reservation });
-//   } catch (err) {
-//     console.error("createReservation Error:", err);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server error", error: err.message });
-//   }
-// };
+const Transaction = require("../model/transactions");
 
 exports.createReservation = async (req, res) => {
   try {
@@ -113,14 +14,14 @@ exports.createReservation = async (req, res) => {
       roomNumber,
       checkin,
       checkout,
-      // --- NEW FIELDS ADDED FOR CONSISTENCY ---
-      adults = 1,        // Default to 1 if not provided
-      infants = 0,       // Default to 0 if not provided
-      arrivalTime,       // Maps to 'expectedArrivalTime' in Model
+      adults = 1,       
+      infants = 0,       
+      arrivalTime,   
       specialRequest,
       paymentMethod,
-      promoCode
-      // ----------------------------------------
+      promoCode,
+      advanceAmount,
+      advancePaymentMethod
     } = req.body;
 
     if (
@@ -148,9 +49,6 @@ exports.createReservation = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Room is under maintenance." });
-
-    // --- NEW CAPACITY CHECK LOGIC ---
-    // 1. Check Adults
     if (room.adults < adults) {
         return res.status(400).json({ 
             success: false, 
@@ -231,6 +129,23 @@ exports.createReservation = async (req, res) => {
       createdBy: req.user.userId,
     });
 
+    // ============================================================
+    // 👇 NEW LOGIC: AUTOMATIC TRANSACTION CREATION 👇
+    // ============================================================
+    if (advanceAmount && Number(advanceAmount) > 0) {
+        // Create the Ledger Entry
+        await Transaction.create({
+            reservation: reservation._id,
+            amount: Number(advanceAmount),
+            type: 'advance',
+            // Default to 'Cash' if method not provided
+            paymentMethod: advancePaymentMethod || "Cash", 
+            description: "Initial Deposit (Auto-created with Reservation)",
+            recordedBy: req.user.userId
+        });
+    }
+    // ============================================================
+
     return res.status(201).json({ success: true, data: reservation });
   } catch (err) {
     console.error("createReservation Error:", err);
@@ -269,18 +184,96 @@ exports.getReservations = async (req, res) => {
   }
 };
 
+// exports.getReservationById = async (req, res) => {
+//   try {
+//     const r = await Reservation.findById(req.params.id)
+//       .populate("room", "roomNumber category rate status")
+//       .populate("createdBy", "name email");
+//     if (!r)
+//       return res.status(404).json({ success: false, message: "Not found" });
+
+//     // 1. Fetch the Wallet History for this ID
+//     const transactions = await Transaction.find({ reservation: r._id });
+    
+//     let totalAdvance = 0;
+//     transactions.forEach(tx => {
+//         if(tx.type === 'advance') totalAdvance += tx.amount;
+//         if(tx.type === 'refund') totalAdvance -= tx.amount;
+//     });
+
+//     // 2. Calculate Expected Costs
+//     const oneDay = 24 * 60 * 60 * 1000;
+//     // Calculate nights (Start to End)
+//     const diffDays = Math.round(Math.abs((new Date(r.endAt) - new Date(r.startAt)) / oneDay));
+//     const nights = diffDays === 0 ? 1 : diffDays; // Minimum 1 night
+    
+//     const roomRate = r.room?.rate || 0;
+//     const estimatedTotal = roomRate * nights;
+    
+//     // 3. Calculate Balance
+//     const estimatedBalance = Math.max(0, estimatedTotal - totalAdvance);
+
+//     res.json({ success: true, data: r });
+//   } catch (err) {
+//     res
+//       .status(500)
+//       .json({ success: false, message: "Server error", error: err.message });
+//   }
+// };
+
 exports.getReservationById = async (req, res) => {
   try {
     const r = await Reservation.findById(req.params.id)
       .populate("room", "roomNumber category rate status")
       .populate("createdBy", "name email");
+
     if (!r)
       return res.status(404).json({ success: false, message: "Not found" });
-    res.json({ success: true, data: r });
+
+    // ============================================================
+    // 👇 NEW LOGIC: FETCH WALLET & CALCULATE FINANCIALS 👇
+    // ============================================================
+    
+    // 1. Fetch transactions linked to this reservation
+    // Make sure you imported Transaction at the top of the file!
+    const transactions = await Transaction.find({ reservation: r._id });
+    
+    let totalAdvance = 0;
+    transactions.forEach(tx => {
+        if(tx.type === 'advance') totalAdvance += tx.amount;
+        if(tx.type === 'refund') totalAdvance -= tx.amount;
+    });
+
+    // 2. Calculate Nights
+    const oneDay = 24 * 60 * 60 * 1000;
+    const diffDays = Math.round(Math.abs((new Date(r.endAt) - new Date(r.startAt)) / oneDay));
+    const nights = diffDays === 0 ? 1 : diffDays; 
+    
+    // 3. Calculate Totals
+    const roomRate = r.room?.rate || 0;
+    const estimatedTotal = roomRate * nights;
+    const estimatedBalance = Math.max(0, estimatedTotal - totalAdvance);
+
+    // ============================================================
+
+    // 4. Return merged data
+    res.json({ 
+        success: true, 
+        data: {
+            ...r.toObject(), // 👈 CRITICAL: Converts Mongoose doc to plain object
+            financials: {    // 👈 Appends the new data
+                nights,
+                roomRate,
+                estimatedTotal,
+                totalAdvance,
+                estimatedBalance
+            }
+        } 
+    });
+
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Server error", error: err.message });
+    console.error("Get Reservation Error:", err);
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
 
