@@ -3,7 +3,7 @@
 
 // exports.uploadImageToS3 = async (file) => {
 //   const key = `images/rooms/${Date.now()}-${file.originalname}`;
-  
+
 //   const params = {
 //     Bucket: process.env.S3_BUCKET,
 //     Key: key,
@@ -46,9 +46,9 @@ const { PutObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
  */
 exports.uploadImageToS3 = async (file, folder = "images/rooms") => {
   // Ensure we don't end up with double slashes if folder has trailing slash
-  const cleanFolder = folder.replace(/\/$/, ""); 
+  const cleanFolder = folder.replace(/\/$/, "");
   const key = `${cleanFolder}/${Date.now()}-${file.originalname}`;
-  
+
   const params = {
     Bucket: process.env.S3_BUCKET,
     Key: key,
@@ -69,7 +69,7 @@ exports.deleteImageFromS3 = async (imageUrl) => {
     // Works for any folder structure (images/rooms/..., images/decor/...)
     const url = new URL(imageUrl);
     const key = url.pathname.substring(1); // Remove the leading '/'
-
+    console.log("delete key checking valye", key);
     const params = {
       Bucket: process.env.S3_BUCKET,
       Key: key,

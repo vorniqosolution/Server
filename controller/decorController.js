@@ -16,7 +16,7 @@ const validateDecorRequest = async (packageId, forceCreate) => {
   );
 
   if (!decorPkg) throw new Error("Decor Package not found");
-  if (!decorPkg.isActive)
+  if (!decorPkg.isCustom)
     throw new Error("This package is currently unavailable");
 
   // INVENTORY CHECK (Soft Warning)
@@ -52,15 +52,12 @@ exports.createPackage = async (req, res) => {
   try {
     const { title, description, price, inventoryRequirements, isCustom } =
       req.body;
-
-    // console.log(
-    //   "title",
-    //   title,
-    //   description,
-    //   price,
-    //   inventoryRequirements,
-    //   isCustom
-    // );
+    const existing = await DecorPackage.findOne({ title: title.trim() });
+    if (existing) {
+      return res
+        .status(400)
+        .json({ message: "Title already exists. Choose a different one." });
+    }
     // --- A. Upload Images to S3 ---
     let imageUrls = [];
     if (req.files && req.files.length > 0) {
@@ -92,7 +89,7 @@ exports.createPackage = async (req, res) => {
         }
       }
     }
-
+    // console.log("parsedRequirements", parsedRequirements);
     // --- C. Save to Database ---
     const newPackage = await DecorPackage.create({
       title,
@@ -106,13 +103,14 @@ exports.createPackage = async (req, res) => {
 
     res.status(201).json({ success: true, data: newPackage });
   } catch (err) {
-    if (err.code === 11000)
-      return res.status(400).json({ message: "Title already exists." });
+    // if (err.code === 11000)
+    //   return res.status(400).json({ message: "Title already exists." });
     console.error("Create Decor Error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 };
 
+// you not get the customization value from body
 exports.updatePackage = async (req, res) => {
   try {
     const { id } = req.params;
@@ -192,10 +190,20 @@ exports.deletePackage = async (req, res) => {
       });
     } else {
       // Hard Delete
-      const deletedPackage = await DecorPackage.findByIdAndDelete(id);
+      // 1 First, find package so we can access images
+      const deletedPackageData = await DecorPackage.findById(id);
 
-      if (!deletedPackage)
+      if (!deletedPackageData)
         return res.status(404).json({ message: "Package not found" });
+
+      // 2 Delete all images from S3
+      if (deletedPackageData.images && deletedPackageData.images.length > 0) {
+        for (const imgUrl of deletedPackageData.images) {
+          await deleteImageFromS3(imgUrl); // Your Existing Function
+        }
+      }
+      // 3 Now delete from DB
+      await DecorPackage.findByIdAndDelete(id);
 
       return res.status(200).json({
         success: true,
