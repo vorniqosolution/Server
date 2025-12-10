@@ -1,6 +1,7 @@
 const Invoice = require("../model/invoice");
 const Guest = require("../model/guest");
 const Room = require("../model/room");
+const Transaction = require("../model/transactions")
 const nodemailer = require("nodemailer");
 const puppeteer = require("puppeteer");
 const path = require("path");
@@ -71,12 +72,32 @@ const uploadInvoiceS3 = async (pdfBuffer, invoiceNumber) => {
   return `invoices/${invoiceNumber}.pdf`;
 };
 
+// exports.getInvoiceById = async (req, res) => {
+//   try {
+//     const invoice = await Invoice.findById(req.params.id)
+//       .populate({
+//         path: "guest",
+//         populate: { path: "room", model: "Room" }, // <-- Deep populate is better here too
+//       })
+//       .populate("createdBy", "name");
+
+//     if (!invoice) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Invoice not found" });
+//     }
+//     res.status(200).json({ success: true, data: invoice });
+//   } catch (err) {
+//     res.status(500).json({ message: "Server error", error: err.message });
+//   }
+// };
+
 exports.getInvoiceById = async (req, res) => {
   try {
     const invoice = await Invoice.findById(req.params.id)
       .populate({
         path: "guest",
-        populate: { path: "room", model: "Room" }, // <-- Deep populate is better here too
+        populate: { path: "room", model: "Room" },
       })
       .populate("createdBy", "name");
 
@@ -85,9 +106,34 @@ exports.getInvoiceById = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Invoice not found" });
     }
-    res.status(200).json({ success: true, data: invoice });
+
+    // --- NEW: Calculate total refunds issued for this guest ---
+    let totalRefunded = 0;
+
+    if (invoice.guest?._id) {
+      const refundTxs = await Transaction.find({
+        guest: invoice.guest._id,
+        type: "refund",
+      }).lean();
+
+      totalRefunded = refundTxs.reduce(
+        (sum, tx) => sum + (tx.amount || 0),
+        0
+      );
+    }
+
+    // Convert Mongoose doc to plain object so we can append fields
+    const invoiceObj = invoice.toObject();
+    invoiceObj.totalRefunded = totalRefunded; // 👈 Attach here
+
+    return res
+      .status(200)
+      .json({ success: true, data: invoiceObj });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("getInvoiceById Error:", err);
+    res
+      .status(500)
+      .json({ message: "Server error", error: err.message });
   }
 };
 
