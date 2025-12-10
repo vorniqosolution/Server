@@ -278,7 +278,7 @@ exports.createGuest = async (req, res) => {
       additionaldiscount = 0,
       reservationId,
       // For Walk-ins who buy decor immediately at desk
-      decorPackageId,
+      decorPackageid,
     } = req.body;
 
     // --- 1. VALIDATIONS ---
@@ -344,12 +344,10 @@ exports.createGuest = async (req, res) => {
       blockingReservation &&
       (!reservationId || blockingReservation._id.toString() !== reservationId)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Room is reserved for another guest.",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Room is reserved for another guest.",
+      });
     }
 
     // 👇 PASTE THIS BLOCK HERE 👇
@@ -430,8 +428,8 @@ exports.createGuest = async (req, res) => {
     let decorTotal = 0;
 
     // SCENARIO A: Walk-In Guest buys Decor NOW
-    if (decorPackageId) {
-      const decorPkg = await DecorPackage.findById(decorPackageId).populate(
+    if (decorPackageid) {
+      const decorPkg = await DecorPackage.findById(decorPackageid).populate(
         "inventoryRequirements.item"
       );
       if (decorPkg) {
@@ -549,10 +547,9 @@ exports.createGuest = async (req, res) => {
     );
     const invoiceGrandTotal = invoiceSubtotalBeforeTax + invoiceGstAmount;
 
-     // 👇 PASTE THIS LINE HERE (To Calculate Balance) 👇
+    // 👇 PASTE THIS LINE HERE (To Calculate Balance) 👇
     const balanceDue = Math.max(0, invoiceGrandTotal - advanceFromReservation);
     // 👆 ------------------------------------------- 👆
-
 
     // Update Guest record with final money stats
     guest.totalRent = invoiceGrandTotal;
@@ -579,7 +576,6 @@ exports.createGuest = async (req, res) => {
       balanceDue: balanceDue,
       status: balanceDue === 0 ? "paid" : "pending",
       // 👆 ------------------------------------------ 👆
-
 
       dueDate: checkOut,
       // status: "pending",
@@ -618,13 +614,11 @@ exports.createGuest = async (req, res) => {
       console.error("Auto-Inventory failed:", invErr?.message);
     }
 
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: "Guest checked in successfully",
-        data: { guest },
-      });
+    return res.status(201).json({
+      success: true,
+      message: "Guest checked in successfully",
+      data: { guest },
+    });
   } catch (err) {
     console.error("createGuest Error:", err);
     return res
@@ -674,78 +668,212 @@ exports.getGuestById = async (req, res) => {
   }
 };
 
+// exports.checkoutGuest = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     if (!mongoose.Types.ObjectId.isValid(id)) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Invalid guest ID" });
+//     }
+//     const guest = await Guest.findById(id);
+//     if (!guest) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Guest not found" });
+//     }
+//     if (guest.status === "checked-out") {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Guest already checked out" });
+//     }
+
+//     // mark checkout timestamp
+//     const now = new Date();
+//     guest.checkOutAt = now;
+//     guest.checkOutTime = now.toTimeString().slice(0, 5);
+//     guest.status = "checked-out";
+
+//     // recalc stay duration
+//     const inMs = guest.checkInAt.getTime();
+//     const outMs = now.getTime();
+//     guest.stayDuration = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24));
+//     await guest.save();
+
+//     // free up the room
+//     const room = await Room.findById(guest.room);
+//     if (room) {
+//       room.status = "available";
+//       await room.save();
+//     }
+//     // Change the status in reservation model
+//     const reservation = await Reservation.findOneAndUpdate(
+//       { guest: id },
+//       { $set: { status: "checked-out" } },
+//       { new: true }
+//     );
+//     // Notify Inventory module of check-out
+//     try {
+//       await axios.post(
+//         `${process.env.API_BASE_URL}/api/inventory/checkout`,
+//         { roomId: guest.room, guestId: guest._id },
+//         {
+//           headers: {
+//             Cookie: req.headers.cookie,
+//           },
+//         }
+//       );
+//       console.log(
+//         "Calling Inventory at:",
+//         `${process.env.API_BASE_URL}/api/inventory/checkout`
+//       );
+//     } catch (invErr) {
+//       console.error("Inventory check-out failed:", invErr.message);
+//       // Continue without blocking check-out
+//     }
+
+//     return res
+//       .status(200)
+//       .json({ success: true, message: "Guest checked out", data: guest });
+//   } catch (err) {
+//     console.error("checkoutGuest Error:", err);
+//     return res
+//       .status(500)
+//       .json({ success: false, message: "Server error", error: err.message });
+//   }
+// };
+
 exports.checkoutGuest = async (req, res) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid guest ID" });
-    }
-    const guest = await Guest.findById(id);
-    if (!guest) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Guest not found" });
-    }
-    if (guest.status === "checked-out") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Guest already checked out" });
+      return res.status(400).json({ success: false, message: "Invalid guest ID" });
     }
 
-    // mark checkout timestamp
+    const guest = await Guest.findById(id);
+    if (!guest) {
+      return res.status(404).json({ success: false, message: "Guest not found" });
+    }
+    if (guest.status === "checked-out") {
+      return res.status(400).json({ success: false, message: "Guest already checked out" });
+    }
+
+    // 1. Mark checkout timestamp
     const now = new Date();
     guest.checkOutAt = now;
     guest.checkOutTime = now.toTimeString().slice(0, 5);
     guest.status = "checked-out";
 
-    // recalc stay duration
+    // 2. Recalculate Actual Stay Duration
     const inMs = guest.checkInAt.getTime();
     const outMs = now.getTime();
-    guest.stayDuration = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24));
+    // Ensure at least 1 day counts even if checking out same day
+    const calculatedNights = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24)); 
+    guest.stayDuration = calculatedNights > 0 ? calculatedNights : 1; 
+    
     await guest.save();
 
-    // free up the room
+    // 3. Free up the room
     const room = await Room.findById(guest.room);
     if (room) {
       room.status = "available";
       await room.save();
     }
-    // Change the status in reservation model
-    const reservation = await Reservation.findOneAndUpdate(
+
+    // 4. Update Reservation Status
+    await Reservation.findOneAndUpdate(
       { guest: id },
       { $set: { status: "checked-out" } },
       { new: true }
     );
-    // Notify Inventory module of check-out
+
+    // ============================================================
+    // 👇 NEW LOGIC: RECALCULATE INVOICE FOR ACTUAL STAY 👇
+    // ============================================================
+    let refundDue = 0;
+    const invoice = await Invoice.findOne({ guest: guest._id });
+
+    if (invoice && invoice.items && invoice.items.length > 0) {
+        // Assume first item is Room Rent
+        const roomLine = invoice.items[0]; 
+        const originalNights = Number(roomLine.quantity) || 1;
+        const actualNights = guest.stayDuration;
+
+        // Only recalculate if the nights have changed (Early Checkout or Extension)
+        if (actualNights !== originalNights) {
+            const ratio = actualNights / originalNights;
+
+            // Helper to ensure numbers
+            const getNum = (val) => (typeof val === 'number' ? val : Number(val) || 0);
+
+            const originalSubtotal = getNum(invoice.subtotal);
+            const originalStdDiscount = getNum(invoice.discountAmount);
+            const extraDiscount = getNum(invoice.additionaldiscount); // Flat amount, doesn't scale
+            const taxRate = getNum(invoice.taxRate);
+
+            // A. Scale the Room Price & % Discount
+            const newSubtotal = Math.round(originalSubtotal * ratio);
+            const newStdDiscount = Math.round(originalStdDiscount * ratio);
+
+            // B. Calculate New Tax & Total
+            // Formula: (Room - StdDisc - FlatDisc) * Tax
+            const taxableAmount = Math.max(0, newSubtotal - newStdDiscount - extraDiscount);
+            const newTaxAmount = Math.round((taxableAmount * taxRate) / 100);
+            const newGrandTotal = taxableAmount + newTaxAmount;
+
+            // C. Update Invoice Fields
+            roomLine.quantity = actualNights;
+            roomLine.total = newSubtotal; // Update line item total
+            
+            invoice.subtotal = newSubtotal;
+            invoice.discountAmount = newStdDiscount;
+            // invoice.additionaldiscount remains unchanged (it's flat)
+            invoice.taxAmount = newTaxAmount;
+            invoice.grandTotal = newGrandTotal;
+
+            // D. Recalculate Balance based on what they ALREADY PAID
+            const paidSoFar = getNum(invoice.advanceAdjusted);
+            
+            let rawBalance = newGrandTotal - paidSoFar;
+
+            if (rawBalance < 0) {
+                // Negative balance means we owe them money (Refund)
+                refundDue = Math.abs(rawBalance);
+                invoice.balanceDue = 0; // They owe nothing
+            } else {
+                refundDue = 0;
+                invoice.balanceDue = rawBalance; // They still owe some amount
+            }
+
+            invoice.status = invoice.balanceDue === 0 ? "paid" : "pending";
+            
+            // Mark items modified so Mongoose saves the array update
+            invoice.markModified('items');
+            await invoice.save();
+        }
+    }
+    // ============================================================
+
+    // 5. Notify Inventory
     try {
       await axios.post(
         `${process.env.API_BASE_URL}/api/inventory/checkout`,
         { roomId: guest.room, guestId: guest._id },
-        {
-          headers: {
-            Cookie: req.headers.cookie,
-          },
-        }
-      );
-      console.log(
-        "Calling Inventory at:",
-        `${process.env.API_BASE_URL}/api/inventory/checkout`
+        { headers: { Cookie: req.headers.cookie } }
       );
     } catch (invErr) {
       console.error("Inventory check-out failed:", invErr.message);
-      // Continue without blocking check-out
     }
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Guest checked out", data: guest });
+    return res.status(200).json({ 
+        success: true, 
+        message: "Guest checked out", 
+        data: { guest, refundDue } // Send refund amount to frontend just in case
+    });
+
   } catch (err) {
     console.error("checkoutGuest Error:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error", error: err.message });
+    return res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
 
@@ -826,12 +954,10 @@ exports.getGuestActivityByDate = async (req, res) => {
     const { date } = req.query;
 
     if (!date) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Date is required. Format: YYYY-MM-DD",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Date is required. Format: YYYY-MM-DD",
+      });
     }
 
     const dayStart = new Date(`${date}T00:00:00.000Z`);
