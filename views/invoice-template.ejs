@@ -90,10 +90,9 @@
       .billing-summary .amount {
         text-align: right;
       }
-      /* Modified: Used for the final balance row now */
       .billing-summary .final-row {
         font-weight: bold;
-        font-size: 1.2em;
+        font-size: 1.1em;
         background-color: #f7f7f7;
         border-top: 2px solid #ddd;
       }
@@ -106,6 +105,17 @@
     </style>
   </head>
   <body>
+    <% 
+      // --- Safely normalize money fields ---
+      const effectiveAdvance = typeof invoice.advanceAdjusted === 'number' ? invoice.advanceAdjusted : 0;
+      const grandTotal = typeof invoice.grandTotal === 'number' ? invoice.grandTotal : Number(invoice.grandTotal) || 0;
+      const balanceDueFromDb = typeof invoice.balanceDue === 'number' ? invoice.balanceDue : null;
+      const computedBalanceDue = Math.max(0, grandTotal - effectiveAdvance);
+      const balanceDue = balanceDueFromDb === null ? computedBalanceDue : balanceDueFromDb;
+      const totalRefunded = typeof invoice.totalRefunded === 'number' ? invoice.totalRefunded : 0;
+      const refundDue = Math.max(0, effectiveAdvance - grandTotal);
+    %>
+
     <div class="invoice-box">
       <header class="header">
         <h1>HSQ TOWERS</h1>
@@ -113,16 +123,17 @@
       </header>
 
       <section class="meta-info">
-        Invoice Generated: <%= invoice.invoiceNumber %>, Room <%=
-        guest.room.roomNumber %>, <%= new
-        Date(invoice.issueDate).toLocaleString('en-US') %>
+        Invoice <strong><%= invoice.invoiceNumber %></strong> &nbsp; | &nbsp;
+        Room <strong><%= guest.room.roomNumber %></strong> &nbsp; | &nbsp;
+        Generated on
+        <strong><%= new Date(invoice.issueDate || invoice.createdAt).toLocaleString('en-US') %></strong>
       </section>
 
       <section class="guest-intro">
         <h3><%= guest.fullName %></h3>
         <p>
           <span>Guest ID: <%= guest._id.toString().slice(-8).toUpperCase() %></span>
-          <span style="font-weight: bold; color: <%= guest.status === 'checked-in' ? 'green' : '#666' %>">
+          <span style="font-weight: bold; color: <%= guest.status === 'checked-in' ? 'green' : '#555' %>">
             <%= guest.status === 'checked-in' ? 'Active Stay' : 'Checked Out' %>
           </span>
         </p>
@@ -160,13 +171,16 @@
           <div class="room-details">
             <h3 class="section-title">Room Details</h3>
             <p>
-              <b>Room <%= guest.room.roomNumber %></b> • <%= guest.room.bedType %> • <%= guest.room.category %> • <%= guest.room.view %>
+              <b>Room <%= guest.room.roomNumber %></b> •
+              <%= guest.room.bedType %> •
+              <%= guest.room.category %> •
+              <%= guest.room.view %>
             </p>
             <p><b>Rate:</b> Rs<%= guest.room.rate.toLocaleString() %>/night</p>
           </div>
 
           <div class="payment-details">
-            <h3 class="section-title">Payment Method</h3>
+            <h3 class="section-title">Primary Payment Method</h3>
             <p style="text-transform: capitalize"><%= guest.paymentMethod %></p>
           </div>
         </div>
@@ -176,23 +190,25 @@
           <table class="info-table">
             <tr>
               <td class="label">Check-in Date</td>
-              <td>
-                <%= new Date(guest.checkInAt).toLocaleDateString() %>
-              </td>
+              <td><%= new Date(guest.checkInAt).toLocaleDateString() %></td>
             </tr>
             <tr>
               <td class="label">Check-out Date</td>
               <td>
-                <%= new Date(guest.checkOutAt).toLocaleDateString() %>
+                <%= guest.checkOutAt ? new Date(guest.checkOutAt).toLocaleDateString() : 'N/A' %>
               </td>
+            </tr>
+            <tr>
+              <td class="label">Duration</td>
+              <td><%= guest.stayDuration %> night(s)</td>
             </tr>
           </table>
 
           <div class="billing-summary" style="margin-top: 20px">
             <h3 class="section-title">Billing Summary</h3>
             <table>
-              <!-- Invoice Items -->
-              <% invoice.items.forEach(item => { %>
+              <!-- Line items -->
+              <% invoice.items.forEach(function(item) { %>
               <tr>
                 <td><%= item.description %> (<%= item.quantity %>)</td>
                 <td class="amount">Rs<%= item.total.toLocaleString() %></td>
@@ -202,21 +218,19 @@
               <!-- Subtotal -->
               <tr>
                 <td>Subtotal</td>
-                <td class="amount">
-                  Rs<%= invoice.subtotal.toLocaleString() %>
-                </td>
+                <td class="amount">Rs<%= invoice.subtotal.toLocaleString() %></td>
               </tr>
-              
+
               <!-- Discounts -->
               <% if (invoice.discountAmount > 0) { %>
               <tr>
-                <td>Discount (<%= guest.discountTitle || 'Standard' %>)</td>
+                <td>Standard Discount</td>
                 <td class="amount" style="color: red">
                   -Rs<%= invoice.discountAmount.toLocaleString() %>
                 </td>
               </tr>
               <% } %>
-              
+
               <% if (invoice.additionaldiscount > 0) { %>
               <tr>
                 <td>Additional Discount</td>
@@ -225,33 +239,58 @@
                 </td>
               </tr>
               <% } %>
-              
-              <!-- Grand Total (Calculated Bill) -->
+
+              <!-- Tax -->
               <tr>
-                <td style="font-weight: bold; border-top: 1px solid #ddd;">Total Bill</td>
-                <td class="amount" style="font-weight: bold; border-top: 1px solid #ddd;">
-                  Rs<%= invoice.grandTotal.toLocaleString() %>
+                <td>Tax (<%= invoice.taxRate %>%)</td>
+                <td class="amount">Rs<%= invoice.taxAmount.toLocaleString() %></td>
+              </tr>
+
+              <!-- Grand Total -->
+              <tr>
+                <td style="font-weight:bold; border-top:1px solid #ddd;">Grand Total</td>
+                <td class="amount" style="font-weight:bold; border-top:1px solid #ddd;">
+                  Rs<%= grandTotal.toLocaleString() %>
                 </td>
               </tr>
 
-              <!-- Advance / Paid -->
-              <% if (invoice.advanceAdjusted > 0) { %>
+              <!-- Paid / Advance -->
+              <% if (effectiveAdvance > 0) { %>
               <tr>
-                <td style="color: #27ae60;">Less: Advance/Paid</td>
-                <td class="amount" style="color: #27ae60;">
-                  -Rs<%= invoice.advanceAdjusted.toLocaleString() %>
+                <td>Paid / Advance</td>
+                <td class="amount" style="color: green;">
+                  -Rs<%= effectiveAdvance.toLocaleString() %>
                 </td>
               </tr>
               <% } %>
 
-              <!-- Balance Due (The Final Line) -->
-              <tr class="final-row">
-                <td><%= invoice.balanceDue === 0 ? 'Net Balance' : 'Balance Due' %></td>
-                <td class="amount" style="color: <%= invoice.balanceDue > 0 ? '#c0392b' : '#27ae60' %>">
-                  Rs<%= invoice.balanceDue ? invoice.balanceDue.toLocaleString() : '0' %>
+              <!-- Refunds Issued -->
+              <% if (totalRefunded > 0) { %>
+              <tr>
+                <td>Refunds Issued</td>
+                <td class="amount" style="color: red;">
+                  -Rs<%= totalRefunded.toLocaleString() %>
                 </td>
               </tr>
+              <% } %>
 
+              <!-- Refund Due -->
+              <% if (refundDue > 0) { %>
+              <tr>
+                <td style="font-weight:bold; color:#c0392b;">Refund Due</td>
+                <td class="amount" style="font-weight:bold; color:#c0392b;">
+                  Rs<%= refundDue.toLocaleString() %>
+                </td>
+              </tr>
+              <% } %>
+
+              <!-- Final Balance -->
+              <tr class="final-row">
+                <td>Balance Due</td>
+                <td class="amount" style="color:<%= balanceDue > 0 ? '#c0392b' : '#27ae60' %>;">
+                  Rs<%= balanceDue.toLocaleString() %>
+                </td>
+              </tr>
             </table>
           </div>
         </div>
@@ -260,9 +299,10 @@
       <footer class="footer">
         <p>Thank you for choosing HSQ Towers</p>
         <p>For any inquiries, please contact our reception desk.</p>
-        
-        <% if (invoice.balanceDue === 0) { %>
-            <p style="margin-top: 10px; font-weight: bold; color: green; border: 2px solid green; display: inline-block; padding: 5px 15px; border-radius: 4px;">PAID IN FULL</p>
+        <% if (balanceDue === 0) { %>
+          <p style="margin-top: 10px; font-weight: bold; color: green; border: 2px solid green; display: inline-block; padding: 5px 15px; border-radius: 4px;">
+            PAID IN FULL
+          </p>
         <% } %>
       </footer>
     </div>
