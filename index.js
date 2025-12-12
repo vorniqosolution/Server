@@ -15,7 +15,7 @@ const SettingRoutes = require("./routes/taxsettingRoutes");
 const reservationRoutes = require("./routes/reservationRoutes");
 const publicApiRoutes = require("./routes/publicApiRoutes");
 const decorRoutes = require("./routes/decorRoutes");
-const transactionRoutes = require("./routes/transactionRoutes")
+const transactionRoutes = require("./routes/transactionRoutes");
 // const transactionRoutes = require("./routes/transactionRoutes");
 
 dotenv.config();
@@ -61,8 +61,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/reservation", reservationRoutes);
 app.use("/api/tax", SettingRoutes);
 app.use("/api/decor", decorRoutes);
-app.use("/api/transactions", transactionRoutes)
-// app.use("/api/transactions", transactionRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 // testing purpose
 app.get("/test", (req, res) => {
