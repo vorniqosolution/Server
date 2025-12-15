@@ -1,85 +1,6 @@
 const Transaction = require("../model/transactions");
-const Invoice = require("../model/invoice"); // <--- ADD THIS
+const Invoice = require("../model/invoice");
 const Guest = require("../model/guest");
-
-// exports.addTransaction = async (req, res) => {
-//   try {
-//     const {
-//       reservationId,
-//       guestId,
-//       amount,
-//       type,
-//       paymentMethod,
-//       referenceId,
-//       description,
-//     } = req.body;
-
-//     if (!amount || !type || !paymentMethod) {
-//       return res
-//         .status(400)
-//         .json({
-//           success: false,
-//           message: "Amount, Type, and Method are required.",
-//         });
-//     }
-
-//     if (!reservationId && !guestId) {
-//       return res
-//         .status(400)
-//         .json({
-//           success: false,
-//           message: "Transaction must be linked to a Reservation or Guest.",
-//         });
-//     }
-
-//     const transaction = await Transaction.create({
-//       reservation: reservationId || null,
-//       guest: guestId || null,
-//       amount: Number(amount),
-//       type,
-//       paymentMethod,
-//       referenceId,
-//       description,
-//       recordedBy: req.user.userId,
-//     });
-//     if (guestId && type === "payment") {
-//       const invoice = await Invoice.findOne({ guest: guestId });
-
-//       if (invoice) {
-//             if (type === 'payment') {
-//                 invoice.balanceDue = invoice.balanceDue - Number(amount);
-//             }
-//             // 👇 ADD THIS BLOCK 👇
-//             else if (type === 'refund') {
-//                 // If we give money back, the guest technically "owes" us that amount again
-//                 // OR we are returning extra money they paid.
-//                 // Usually: BalanceDue = BalanceDue + RefundAmount
-//                 invoice.balanceDue = invoice.balanceDue + Number(amount);
-
-//                 // If status was 'paid', it might become 'pending' again
-//                 if (invoice.balanceDue > 0) invoice.status = 'pending';
-//             }
-//             // 👆 --------------- 👆
-
-//             if (invoice.balanceDue < 0) invoice.balanceDue = 0; // Safety
-//             if (invoice.balanceDue === 0) invoice.status = 'paid';
-
-//             await invoice.save();
-//         }
-//     }
-
-//     return res.status(201).json({
-//       success: true,
-//       message: "Transaction recorded successfully",
-//       data: transaction,
-//     });
-//   } catch (err) {
-//     console.error("addTransaction Error:", err);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server error", error: err.message });
-//   }
-// };
 
 exports.addTransaction = async (req, res) => {
   try {
@@ -179,14 +100,17 @@ exports.getTransactions = async (req, res) => {
     if (guestId) query.guest = guestId;
 
     const list = await Transaction.find(query)
+      // For guest-linked transactions
       .populate({
         path: "guest",
         select: "fullName room",
         populate: { path: "room", select: "roomNumber" },
       })
+      // For reservation-linked transactions
       .populate({
         path: "reservation",
-        select: "roomNumber",
+        select: "fullName room",          // Reservation has fullName + room (ObjectId)
+        populate: { path: "room", select: "roomNumber" },
       })
       .populate("recordedBy", "name")
       .sort({ createdAt: -1 });
