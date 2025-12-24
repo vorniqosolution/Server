@@ -14,9 +14,9 @@ exports.createReservation = async (req, res) => {
       roomNumber,
       checkin,
       checkout,
-      adults = 1,       
-      infants = 0,       
-      arrivalTime,   
+      adults = 1,
+      infants = 0,
+      arrivalTime,
       specialRequest,
       paymentMethod,
       promoCode,
@@ -44,25 +44,25 @@ exports.createReservation = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Room not found" });
-    
+
     if (room.status === "maintenance")
       return res
         .status(400)
         .json({ success: false, message: "Room is under maintenance." });
     if (room.adults < adults) {
-        return res.status(400).json({ 
-            success: false, 
-            message: `Capacity exceeded. Room ${roomNumber} allows max ${room.adults} adults.` 
-        });
+      return res.status(400).json({
+        success: false,
+        message: `Capacity exceeded. Room ${roomNumber} allows max ${room.adults} adults.`
+      });
     }
-    
+
     // 2. Check Infants (Safely handle if room.infants is undefined in DB)
-    const roomMaxInfants = room.infants || 0; 
+    const roomMaxInfants = room.infants || 0;
     if (roomMaxInfants < infants) {
-        return res.status(400).json({ 
-            success: false, 
-            message: `Capacity exceeded. Room ${roomNumber} allows max ${roomMaxInfants} infants.` 
-        });
+      return res.status(400).json({
+        success: false,
+        message: `Capacity exceeded. Room ${roomNumber} allows max ${roomMaxInfants} infants.`
+      });
     }
     // -------------------------------
 
@@ -133,16 +133,16 @@ exports.createReservation = async (req, res) => {
     // 👇 NEW LOGIC: AUTOMATIC TRANSACTION CREATION 👇
     // ============================================================
     if (advanceAmount && Number(advanceAmount) > 0) {
-        // Create the Ledger Entry
-        await Transaction.create({
-            reservation: reservation._id,
-            amount: Number(advanceAmount),
-            type: 'advance',
-            // Default to 'Cash' if method not provided
-            paymentMethod: advancePaymentMethod || "Cash", 
-            description: "Initial Deposit (Auto-created with Reservation)",
-            recordedBy: req.user.userId
-        });
+      // Create the Ledger Entry
+      await Transaction.create({
+        reservation: reservation._id,
+        amount: Number(advanceAmount),
+        type: 'advance',
+        // Default to 'Cash' if method not provided
+        paymentMethod: advancePaymentMethod || "Cash",
+        description: "Initial Deposit (Auto-created with Reservation)",
+        recordedBy: req.user.userId
+      });
     }
     // ============================================================
 
@@ -170,10 +170,59 @@ exports.getReservations = async (req, res) => {
       });
     }
 
+    // 1. Get all IDs
+    const reservationIds = list.map(r => r._id);
+
+    // 2. Fetch ALL transactions for these reservations in one query
+    const allTransactions = await Transaction.find({
+      reservation: { $in: reservationIds }
+    });
+
+    // 3. Map transactions by Reservation ID for fast lookup
+    const txMap = {};
+    allTransactions.forEach(tx => {
+      if (!txMap[tx.reservation]) txMap[tx.reservation] = [];
+      txMap[tx.reservation].push(tx);
+    });
+
+    const oneDay = 24 * 60 * 60 * 1000;
+
+    // 4. Attach financials to each reservation
+    const dataWithFinancials = list.map(r => {
+      const rObj = r.toObject();
+      const rTx = txMap[r._id] || [];
+
+      // Calculate Advance
+      let totalAdvance = 0;
+      rTx.forEach(tx => {
+        if (tx.type === 'advance') totalAdvance += tx.amount;
+        if (tx.type === 'refund') totalAdvance -= tx.amount;
+      });
+
+      // Calculate Estimated cost
+      const diffDays = Math.round(Math.abs((new Date(rObj.endAt) - new Date(rObj.startAt)) / oneDay));
+      const nights = diffDays === 0 ? 1 : diffDays;
+
+      const roomRate = r.room?.rate || 0;
+      const estimatedTotal = roomRate * nights;
+      const estimatedBalance = Math.max(0, estimatedTotal - totalAdvance);
+
+      return {
+        ...rObj,
+        financials: {
+          nights,
+          roomRate,
+          estimatedTotal,
+          totalAdvance,
+          estimatedBalance
+        }
+      };
+    });
+
     res.status(200).json({
       success: true,
-      count: list.length,
-      data: list,
+      count: dataWithFinancials.length,
+      data: dataWithFinancials,
     });
   } catch (err) {
     res.status(500).json({
@@ -184,43 +233,6 @@ exports.getReservations = async (req, res) => {
   }
 };
 
-// exports.getReservationById = async (req, res) => {
-//   try {
-//     const r = await Reservation.findById(req.params.id)
-//       .populate("room", "roomNumber category rate status")
-//       .populate("createdBy", "name email");
-//     if (!r)
-//       return res.status(404).json({ success: false, message: "Not found" });
-
-//     // 1. Fetch the Wallet History for this ID
-//     const transactions = await Transaction.find({ reservation: r._id });
-    
-//     let totalAdvance = 0;
-//     transactions.forEach(tx => {
-//         if(tx.type === 'advance') totalAdvance += tx.amount;
-//         if(tx.type === 'refund') totalAdvance -= tx.amount;
-//     });
-
-//     // 2. Calculate Expected Costs
-//     const oneDay = 24 * 60 * 60 * 1000;
-//     // Calculate nights (Start to End)
-//     const diffDays = Math.round(Math.abs((new Date(r.endAt) - new Date(r.startAt)) / oneDay));
-//     const nights = diffDays === 0 ? 1 : diffDays; // Minimum 1 night
-    
-//     const roomRate = r.room?.rate || 0;
-//     const estimatedTotal = roomRate * nights;
-    
-//     // 3. Calculate Balance
-//     const estimatedBalance = Math.max(0, estimatedTotal - totalAdvance);
-
-//     res.json({ success: true, data: r });
-//   } catch (err) {
-//     res
-//       .status(500)
-//       .json({ success: false, message: "Server error", error: err.message });
-//   }
-// };
-
 exports.getReservationById = async (req, res) => {
   try {
     const r = await Reservation.findById(req.params.id)
@@ -229,46 +241,37 @@ exports.getReservationById = async (req, res) => {
 
     if (!r)
       return res.status(404).json({ success: false, message: "Not found" });
-
-    // ============================================================
-    // 👇 NEW LOGIC: FETCH WALLET & CALCULATE FINANCIALS 👇
-    // ============================================================
-    
-    // 1. Fetch transactions linked to this reservation
-    // Make sure you imported Transaction at the top of the file!
     const transactions = await Transaction.find({ reservation: r._id });
-    
+
     let totalAdvance = 0;
     transactions.forEach(tx => {
-        if(tx.type === 'advance') totalAdvance += tx.amount;
-        if(tx.type === 'refund') totalAdvance -= tx.amount;
+      if (tx.type === 'advance') totalAdvance += tx.amount;
+      if (tx.type === 'refund') totalAdvance -= tx.amount;
     });
 
     // 2. Calculate Nights
     const oneDay = 24 * 60 * 60 * 1000;
     const diffDays = Math.round(Math.abs((new Date(r.endAt) - new Date(r.startAt)) / oneDay));
-    const nights = diffDays === 0 ? 1 : diffDays; 
-    
+    const nights = diffDays === 0 ? 1 : diffDays;
+
     // 3. Calculate Totals
     const roomRate = r.room?.rate || 0;
     const estimatedTotal = roomRate * nights;
     const estimatedBalance = Math.max(0, estimatedTotal - totalAdvance);
 
-    // ============================================================
-
     // 4. Return merged data
-    res.json({ 
-        success: true, 
-        data: {
-            ...r.toObject(), // 👈 CRITICAL: Converts Mongoose doc to plain object
-            financials: {    // 👈 Appends the new data
-                nights,
-                roomRate,
-                estimatedTotal,
-                totalAdvance,
-                estimatedBalance
-            }
-        } 
+    res.json({
+      success: true,
+      data: {
+        ...r.toObject(),
+        financials: {
+          nights,
+          roomRate,
+          estimatedTotal,
+          totalAdvance,
+          estimatedBalance
+        }
+      }
     });
 
   } catch (err) {
@@ -327,7 +330,6 @@ exports.deleteReservation = async (req, res) => {
     }
 
     // 2. Prevent deletion of reservations that have been checked-in
-    // Deletion should only be allowed for 'reserved' or 'cancelled' statuses.
     if (
       reservationToDelete.status === "checked-in" ||
       reservationToDelete.status === "checked-out"
@@ -339,7 +341,6 @@ exports.deleteReservation = async (req, res) => {
     }
 
     // 3. If the reservation was 'reserved' and is now being deleted,
-    // we should make sure the associated room is set back to 'available'.
     if (reservationToDelete.status === "reserved") {
       const room = await Room.findById(reservationToDelete.room);
       if (room && room.status !== "maintenance") {
@@ -351,8 +352,6 @@ exports.deleteReservation = async (req, res) => {
     // 4. Perform the deletion
     const result = await Reservation.findByIdAndDelete(reservationId);
 
-    // This check is slightly redundant since we already checked in step 1,
-    // but is good practice to ensure the operation was successful.
     if (!result) {
       return res
         .status(404)
@@ -417,7 +416,7 @@ exports.getDailyActivityReport = async (req, res) => {
         .lean(),
     };
 
-     const [arrivals, checkIns, checkOuts, newBookings, cancellations] =
+    const [arrivals, checkIns, checkOuts, newBookings, cancellations] =
       await Promise.all(Object.values(queries));
 
     const formatReportItem = (item, type) => ({
