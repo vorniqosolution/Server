@@ -23,6 +23,21 @@ const settingsSchema = new mongoose.Schema(
       type: String,
       default: "HSQ Towers",
     },
+    systemAlert: {
+      message: {
+        type: String,
+        default: "",
+      },
+      isActive: {
+        type: Boolean,
+        default: false,
+      },
+      type: {
+        type: String,
+        enum: ["info", "warning", "error"],
+        default: "info",
+      },
+    },
     // You can add more settings here in the future
     // hotelAddress: { type: String, default: "123 Hotel St, City" },
   },
