@@ -13,19 +13,25 @@ const guestSchema = new mongoose.Schema(
     cnic: { type: String, required: true, trim: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: "Room", required: true },
     // --- NEW FIELDS ADDED ---
-    adults: { 
-      type: Number, 
-      required: true, 
-      default: 1, 
-      min: 1 
+    adults: {
+      type: Number,
+      required: true,
+      default: 1,
+      min: 1
     },
-    infants: { 
-      type: Number, 
-      default: 0, 
-      min: 0 
+    infants: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    extraMattresses: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 4,
     },
     // ------------------------
-    checkInAt: { type: Date, required: true }, 
+    checkInAt: { type: Date, required: true },
     checkInTime: {
       type: String,
       default: function () {
@@ -54,7 +60,7 @@ const guestSchema = new mongoose.Schema(
     },
     stayDuration: { type: Number, required: true },
     applyDiscount: { type: Boolean, default: false },
-    discountTitle: { type: String }, 
+    discountTitle: { type: String },
     totalRent: { type: Number },
     gst: { type: Number },
     additionaldiscount: { type: Number },
@@ -64,8 +70,8 @@ const guestSchema = new mongoose.Schema(
       required: true,
     },
     // 👇 MAKE SURE THIS IS HERE 👇
-  advancePayment: { type: Number, default: 0 },
-  // 👆 --------------------- 👆
+    advancePayment: { type: Number, default: 0 },
+    // 👆 --------------------- 👆
   },
 
   { timestamps: true }

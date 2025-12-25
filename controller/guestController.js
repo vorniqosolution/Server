@@ -25,6 +25,7 @@ exports.createGuest = async (req, res) => {
       roomNumber,
       adults = 1,
       infants = 0,
+      extraMattresses = 0,
       checkInDate,
       checkOutDate,
       paymentMethod,
@@ -34,6 +35,23 @@ exports.createGuest = async (req, res) => {
       // For Walk-ins who buy decor immediately at desk
       decorPackageid,
     } = req.body;
+
+    // Helper: Calculate free mattresses based on room category and bed type
+    const getFreeMattresses = (category, bedType) => {
+      const isTwoBed = bedType === "Two Bed";
+      switch (category) {
+        case "Presidential":
+          return isTwoBed ? 2 : 1;
+        case "Duluxe-Plus":
+          return isTwoBed ? 2 : 1;
+        case "Deluxe":
+        case "Executive":
+          return 1;
+        case "Standard":
+        default:
+          return 0;
+      }
+    };
 
     // --- 1. VALIDATIONS ---
     if (!checkInDate || !checkOutDate)
@@ -60,20 +78,44 @@ exports.createGuest = async (req, res) => {
     today.setUTCHours(0, 0, 0, 0);
     checkInDay.setUTCHours(0, 0, 0, 0);
 
-    // if (checkInDay.getTime() !== today.getTime())
-    //   return res
-    //     .status(400)
-    //     .json({ success: false, message: "Check-in must be for today." });
+    // Block future check-in dates (use Reservations for future bookings)
+    if (checkInDay.getTime() > today.getTime())
+      return res
+        .status(400)
+        .json({ success: false, message: "Cannot check-in for a future date. Please use Reservations for future bookings." });
 
     const room = await Room.findOne({ roomNumber });
     if (!room)
       return res
         .status(404)
         .json({ success: false, message: "Room not found" });
-    if (room.status === "occupied" || room.status === "maintenance")
+
+    // Maintenance always blocks
+    if (room.status === "maintenance")
       return res
         .status(400)
-        .json({ success: false, message: `Room is ${room.status}.` });
+        .json({ success: false, message: "Room is under maintenance." });
+
+    // For occupied rooms, check if there's an actual guest overlap
+    if (room.status === "occupied") {
+      // Find any guest currently occupying this room whose dates overlap
+      const overlappingGuest = await Guest.findOne({
+        room: room._id,
+        status: "checked-in",
+        // Check for date overlap: existing guest's checkout > new checkin AND existing guest's checkin < new checkout
+        checkOutAt: { $gt: checkIn },
+        checkInAt: { $lt: checkOut }
+      });
+
+      if (overlappingGuest) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: `Room is occupied from ${new Date(overlappingGuest.checkInAt).toLocaleDateString()} to ${new Date(overlappingGuest.checkOutAt).toLocaleDateString()}.`
+          });
+      }
+    }
 
     // Capacity Check
     if (room.adults < adults)
@@ -131,8 +173,15 @@ exports.createGuest = async (req, res) => {
     );
     const settings = await Setting.findById("global_settings").lean();
     const taxRate = Number(settings?.taxRate ?? 0);
+    const mattressRate = Number(settings?.mattressRate ?? 1500);
     const rate = Number(room.rate) || 0;
     const roomTotal = rate * nights;
+
+    // --- MATTRESS CALCULATIONS ---
+    const requestedMattresses = Math.min(Math.max(0, Number(extraMattresses) || 0), 4);
+    const freeMattresses = getFreeMattresses(room.category, room.bedType);
+    const chargeableMattresses = Math.max(0, requestedMattresses - freeMattresses);
+    const mattressCharges = chargeableMattresses * mattressRate;
 
     // --- 3. CREATE GUEST ---
     const guest = await Guest.create({
@@ -144,6 +193,7 @@ exports.createGuest = async (req, res) => {
       room: room._id,
       adults,
       infants,
+      extraMattresses: requestedMattresses,
       checkInAt: checkIn,
       checkInTime: checkInTimeStr,
       checkOutAt: checkOut,
@@ -178,6 +228,16 @@ exports.createGuest = async (req, res) => {
         total: roomTotal,
       },
     ];
+
+    // Add mattress charges if applicable
+    if (chargeableMattresses > 0) {
+      invoiceItems.push({
+        description: `Extra Mattresses`,
+        quantity: chargeableMattresses,
+        unitPrice: mattressRate,
+        total: mattressCharges,
+      });
+    }
 
     let decorTotal = 0;
 
@@ -271,7 +331,7 @@ exports.createGuest = async (req, res) => {
     }
 
     // --- 5. FINAL CALCULATIONS (Using new totals) ---
-    const finalSubtotal = roomTotal + decorTotal;
+    const finalSubtotal = roomTotal + decorTotal + mattressCharges;
 
     // Discounts
     const discountAmtNum = Math.min(
@@ -522,9 +582,9 @@ exports.checkoutGuest = async (req, res) => {
     const inMs = guest.checkInAt.getTime();
     const outMs = now.getTime();
     // Ensure at least 1 day counts even if checking out same day
-    const calculatedNights = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24)); 
-    guest.stayDuration = calculatedNights > 0 ? calculatedNights : 1; 
-    
+    const calculatedNights = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24));
+    guest.stayDuration = calculatedNights > 0 ? calculatedNights : 1;
+
     await guest.save();
 
     // 3. Free up the room
@@ -548,63 +608,63 @@ exports.checkoutGuest = async (req, res) => {
     const invoice = await Invoice.findOne({ guest: guest._id });
 
     if (invoice && invoice.items && invoice.items.length > 0) {
-        // Assume first item is Room Rent
-        const roomLine = invoice.items[0]; 
-        const originalNights = Number(roomLine.quantity) || 1;
-        const actualNights = guest.stayDuration;
+      // Assume first item is Room Rent
+      const roomLine = invoice.items[0];
+      const originalNights = Number(roomLine.quantity) || 1;
+      const actualNights = guest.stayDuration;
 
-        // Only recalculate if the nights have changed (Early Checkout or Extension)
-        if (actualNights !== originalNights) {
-            const ratio = actualNights / originalNights;
+      // Only recalculate if the nights have changed (Early Checkout or Extension)
+      if (actualNights !== originalNights) {
+        const ratio = actualNights / originalNights;
 
-            // Helper to ensure numbers
-            const getNum = (val) => (typeof val === 'number' ? val : Number(val) || 0);
+        // Helper to ensure numbers
+        const getNum = (val) => (typeof val === 'number' ? val : Number(val) || 0);
 
-            const originalSubtotal = getNum(invoice.subtotal);
-            const originalStdDiscount = getNum(invoice.discountAmount);
-            const extraDiscount = getNum(invoice.additionaldiscount); // Flat amount, doesn't scale
-            const taxRate = getNum(invoice.taxRate);
+        const originalSubtotal = getNum(invoice.subtotal);
+        const originalStdDiscount = getNum(invoice.discountAmount);
+        const extraDiscount = getNum(invoice.additionaldiscount); // Flat amount, doesn't scale
+        const taxRate = getNum(invoice.taxRate);
 
-            // A. Scale the Room Price & % Discount
-            const newSubtotal = Math.round(originalSubtotal * ratio);
-            const newStdDiscount = Math.round(originalStdDiscount * ratio);
+        // A. Scale the Room Price & % Discount
+        const newSubtotal = Math.round(originalSubtotal * ratio);
+        const newStdDiscount = Math.round(originalStdDiscount * ratio);
 
-            // B. Calculate New Tax & Total
-            // Formula: (Room - StdDisc - FlatDisc) * Tax
-            const taxableAmount = Math.max(0, newSubtotal - newStdDiscount - extraDiscount);
-            const newTaxAmount = Math.round((taxableAmount * taxRate) / 100);
-            const newGrandTotal = taxableAmount + newTaxAmount;
+        // B. Calculate New Tax & Total
+        // Formula: (Room - StdDisc - FlatDisc) * Tax
+        const taxableAmount = Math.max(0, newSubtotal - newStdDiscount - extraDiscount);
+        const newTaxAmount = Math.round((taxableAmount * taxRate) / 100);
+        const newGrandTotal = taxableAmount + newTaxAmount;
 
-            // C. Update Invoice Fields
-            roomLine.quantity = actualNights;
-            roomLine.total = newSubtotal; // Update line item total
-            
-            invoice.subtotal = newSubtotal;
-            invoice.discountAmount = newStdDiscount;
-            // invoice.additionaldiscount remains unchanged (it's flat)
-            invoice.taxAmount = newTaxAmount;
-            invoice.grandTotal = newGrandTotal;
+        // C. Update Invoice Fields
+        roomLine.quantity = actualNights;
+        roomLine.total = newSubtotal; // Update line item total
 
-            // D. Recalculate Balance based on what they ALREADY PAID
-            const paidSoFar = getNum(invoice.advanceAdjusted);
-            
-            let rawBalance = newGrandTotal - paidSoFar;
+        invoice.subtotal = newSubtotal;
+        invoice.discountAmount = newStdDiscount;
+        // invoice.additionaldiscount remains unchanged (it's flat)
+        invoice.taxAmount = newTaxAmount;
+        invoice.grandTotal = newGrandTotal;
 
-            if (rawBalance < 0) {
-                // Negative balance means we owe them money (Refund)
-                refundDue = Math.abs(rawBalance);
-                invoice.balanceDue = 0; // They owe nothing
-            } else {
-                refundDue = 0;
-                invoice.balanceDue = rawBalance; // They still owe some amount
-            }
+        // D. Recalculate Balance based on what they ALREADY PAID
+        const paidSoFar = getNum(invoice.advanceAdjusted);
 
-            invoice.status = invoice.balanceDue === 0 ? "paid" : "pending";
-            
-            // Mark items modified so Mongoose saves the array update
-            invoice.markModified('items');
-            await invoice.save();
+        let rawBalance = newGrandTotal - paidSoFar;
+
+        if (rawBalance < 0) {
+          // Negative balance means we owe them money (Refund)
+          refundDue = Math.abs(rawBalance);
+          invoice.balanceDue = 0; // They owe nothing
+        } else {
+          refundDue = 0;
+          invoice.balanceDue = rawBalance; // They still owe some amount
         }
+
+        invoice.status = invoice.balanceDue === 0 ? "paid" : "pending";
+
+        // Mark items modified so Mongoose saves the array update
+        invoice.markModified('items');
+        await invoice.save();
+      }
     }
     // ============================================================
 
@@ -619,10 +679,10 @@ exports.checkoutGuest = async (req, res) => {
       console.error("Inventory check-out failed:", invErr.message);
     }
 
-    return res.status(200).json({ 
-        success: true, 
-        message: "Guest checked out", 
-        data: { guest, refundDue } // Send refund amount to frontend just in case
+    return res.status(200).json({
+      success: true,
+      message: "Guest checked out",
+      data: { guest, refundDue } // Send refund amount to frontend just in case
     });
 
   } catch (err) {
@@ -669,6 +729,7 @@ exports.UpdateGuestById = async (req, res) => {
       address,
       adults,
       infants,
+      extraMattresses,
     } = req.body;
 
     const updatedGuest = await Guest.findByIdAndUpdate(
@@ -682,6 +743,7 @@ exports.UpdateGuestById = async (req, res) => {
         address: address,
         ...(adults !== undefined && { adults }),
         ...(infants !== undefined && { infants }),
+        ...(extraMattresses !== undefined && { extraMattresses: Math.min(Math.max(0, Number(extraMattresses) || 0), 4) }),
       },
       { new: true, runValidators: true }
     );
