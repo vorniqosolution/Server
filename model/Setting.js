@@ -38,6 +38,11 @@ const settingsSchema = new mongoose.Schema(
         default: "info",
       },
     },
+    mattressRate: {
+      type: Number,
+      default: 1500,
+      min: 0,
+    },
     // You can add more settings here in the future
     // hotelAddress: { type: String, default: "123 Hotel St, City" },
   },
