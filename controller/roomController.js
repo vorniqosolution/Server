@@ -59,7 +59,7 @@ exports.updateRoom = async (req, res) => {
         // Use your helper to delete from S3
         const deletePromises = imagesToDelete.map(url => deleteImageFromS3(url));
         await Promise.all(deletePromises);
-        
+
         // Filter the array to remove the deleted images
         finalImageArray = finalImageArray.filter(imgUrl => !imagesToDelete.includes(imgUrl));
       }
@@ -70,7 +70,7 @@ exports.updateRoom = async (req, res) => {
       // Use your helper to upload to S3
       const uploadPromises = req.files.map(file => uploadImageToS3(file));
       const newImageUrls = await Promise.all(uploadPromises);
-      
+
       // Add the new image URLs to the array
       finalImageArray.push(...newImageUrls);
     }
@@ -78,7 +78,7 @@ exports.updateRoom = async (req, res) => {
     // 3. Assign the final, correct array to updateData
     updateData.images = finalImageArray;
     // --- End of Corrected Image Handling Logic ---
-    
+
     const updated = await Room.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
@@ -95,7 +95,7 @@ exports.updateRoom = async (req, res) => {
 
 exports.getRooms = async (req, res) => {
   try {
-    
+
     const rooms = await Room.find().sort({ roomNumber: 1 });
     res.status(200).json({ rooms });
   } catch (err) {
@@ -194,8 +194,11 @@ exports.getAvailableRooms = async (req, res) => {
     const startDate = new Date(`${checkin}T00:00:00.000Z`);
     const endDate = new Date(`${checkout}T00:00:00.000Z`);
 
+    console.log("=== getAvailableRooms Debug ===");
+    console.log("Requested dates:", { checkin, checkout, startDate, endDate });
+
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        return res.status(400).json({ success: false, message: "Invalid date format. Please use YYYY-MM-DD." });
+      return res.status(400).json({ success: false, message: "Invalid date format. Please use YYYY-MM-DD." });
     }
 
     if (endDate <= startDate) {
@@ -207,24 +210,41 @@ exports.getAvailableRooms = async (req, res) => {
       status: { $in: ["reserved", "confirmed"] },
       startAt: { $lt: endDate },
       endAt: { $gt: startDate },
-    }).select('room');
-    
+    }).select('room startAt endAt');
+
+    console.log("Blocking reservations found:", reservedRooms.map(r => ({
+      room: r.room.toString(),
+      startAt: r.startAt,
+      endAt: r.endAt
+    })));
+
     const occupiedRooms = await Guest.find({
       status: 'checked-in',
       checkInAt: { $lt: endDate },
       checkOutAt: { $gt: startDate },
-    }).select('room');
-    
+    }).select('room checkInAt checkOutAt');
+
+    console.log("Blocking guests found:", occupiedRooms.map(g => ({
+      room: g.room.toString(),
+      checkInAt: g.checkInAt,
+      checkOutAt: g.checkOutAt
+    })));
+
     const unavailableRoomIds = [
       ...reservedRooms.map(r => r.room.toString()),
       ...occupiedRooms.map(g => g.room.toString())
     ];
     const uniqueUnavailableRoomIds = [...new Set(unavailableRoomIds)];
 
+    console.log("Unavailable room IDs:", uniqueUnavailableRoomIds);
+
     const availableRooms = await Room.find({
       _id: { $nin: uniqueUnavailableRoomIds },
       status: { $ne: 'maintenance' }
     }).sort({ roomNumber: 1 });
+
+    console.log("Available rooms:", availableRooms.map(r => r.roomNumber));
+    console.log("=== End Debug ===");
 
     return res.status(200).json({ success: true, rooms: availableRooms });
 
@@ -237,7 +257,7 @@ exports.getAvailableRooms = async (req, res) => {
 exports.getRoomTimeline = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Get the start of today in UTC for a reliable starting point
     const startDate = new Date();
     startDate.setUTCHours(0, 0, 0, 0);
@@ -281,8 +301,7 @@ exports.getRoomTimeline = async (req, res) => {
 
     res.status(200).json({ success: true, timeline: bookings });
 
-  } catch (err)
- {
+  } catch (err) {
     console.error("getRoomTimeline Error:", err);
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
