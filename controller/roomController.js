@@ -258,17 +258,17 @@ exports.getRoomTimeline = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get the start of today in UTC for a reliable starting point
+    // Use "right now" as the starting point (not midnight) to avoid timezone confusion
     const startDate = new Date();
-    startDate.setUTCHours(0, 0, 0, 0);
 
     // Calculate the end date 30 days from now
     const endDate = new Date(startDate);
-    endDate.setUTCDate(startDate.getUTCDate() + 30);
+    endDate.setDate(startDate.getDate() + 30);
 
     // The rest of the logic is already robust and correct
     const guests = await Guest.find({
       room: id,
+      status: 'checked-in',
       checkInAt: { $lt: endDate },
       checkOutAt: { $gt: startDate },
     }).select('fullName checkInAt checkOutAt status');
@@ -278,10 +278,11 @@ exports.getRoomTimeline = async (req, res) => {
       status: { $in: ['reserved', 'confirmed'] },
       startAt: { $lt: endDate },
       endAt: { $gt: startDate },
-    }).select('fullName startAt endAt status');
+    }).select('fullName startAt endAt status expectedArrivalTime');
 
     const bookings = [
       ...guests.map(g => ({
+        id: g._id,
         type: 'Guest (Checked-in)',
         name: g.fullName,
         startDate: g.checkInAt,
@@ -289,17 +290,65 @@ exports.getRoomTimeline = async (req, res) => {
         status: g.status,
       })),
       ...reservations.map(r => ({
+        id: r._id,
         type: 'Reservation',
         name: r.fullName,
         startDate: r.startAt,
         endDate: r.endAt,
         status: r.status,
+        arrivalTime: r.expectedArrivalTime || null,
       })),
     ];
 
-    bookings.sort((a, b) => a.startDate - b.startDate);
+    bookings.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 
-    res.status(200).json({ success: true, timeline: bookings });
+    // Calculate Gaps
+    const timelineWithGaps = [];
+    let currentDate = new Date(startDate); // Start cursor
+    const MIN_GAP_HOURS = 24; // Minimum gap to show as "Available" (in hours)
+
+    for (const booking of bookings) {
+      const bookingStart = new Date(booking.startDate);
+      const bookingEnd = new Date(booking.endDate);
+
+      // If there is a gap between cursor and next booking
+      if (bookingStart > currentDate) {
+        const gapHours = (bookingStart - currentDate) / (1000 * 60 * 60);
+        // Only show gap if it's at least MIN_GAP_HOURS long
+        if (gapHours >= MIN_GAP_HOURS) {
+          timelineWithGaps.push({
+            type: "Available",
+            name: "Free Slot",
+            startDate: currentDate,
+            endDate: bookingStart,
+            status: "Available"
+          });
+        }
+      }
+
+      timelineWithGaps.push(booking);
+
+      // Move cursor to end of this booking if it extends further
+      if (bookingEnd > currentDate) {
+        currentDate = bookingEnd;
+      }
+    }
+
+    // Add final gap if space remains until 30-day limit (only if significant)
+    if (currentDate < endDate) {
+      const finalGapHours = (endDate - currentDate) / (1000 * 60 * 60);
+      if (finalGapHours >= MIN_GAP_HOURS) {
+        timelineWithGaps.push({
+          type: "Available",
+          name: "Free Slot",
+          startDate: currentDate,
+          endDate: endDate,
+          status: "Available"
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, timeline: timelineWithGaps });
 
   } catch (err) {
     console.error("getRoomTimeline Error:", err);

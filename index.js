@@ -62,6 +62,7 @@ app.use("/api/reservation", reservationRoutes);
 app.use("/api/tax", SettingRoutes);
 app.use("/api/decor", decorRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 
 // testing purpose
 app.get("/test", (req, res) => {
