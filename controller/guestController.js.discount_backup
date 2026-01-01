@@ -146,6 +146,10 @@ exports.createGuest = async (req, res) => {
       });
     }
 
+    // 👇 PASTE THIS BLOCK HERE 👇
+    // ============================================================
+    // NEW LOGIC: CHECK RESERVATION WALLET
+    // ============================================================
     let advanceFromReservation = 0;
 
     if (reservationId) {
@@ -329,13 +333,11 @@ exports.createGuest = async (req, res) => {
     // --- 5. FINAL CALCULATIONS (Using new totals) ---
     const finalSubtotal = roomTotal + decorTotal + mattressCharges;
 
-    // Discounts - Additional discount can apply to full subtotal
+    // Discounts
     const discountAmtNum = Math.min(
       Math.max(0, Number(additionaldiscount) || 0),
       finalSubtotal
     );
-
-    // Standard discount (percentage) applies ONLY to room rent, not extras
     let stdPct = 0;
     let discountTitle = null;
     if (applyDiscount) {
@@ -348,8 +350,7 @@ exports.createGuest = async (req, res) => {
         discountTitle = validDiscount.title;
       }
     }
-    // Apply standard discount ONLY to room total (not mattresses, decor)
-    const stdDiscountAmt = Math.round(roomTotal * (stdPct / 100));
+    const stdDiscountAmt = Math.round(finalSubtotal * (stdPct / 100));
 
     const invoiceSubtotalBeforeTax = Math.max(
       0,
@@ -360,7 +361,9 @@ exports.createGuest = async (req, res) => {
     );
     const invoiceGrandTotal = invoiceSubtotalBeforeTax + invoiceGstAmount;
 
+    // 👇 PASTE THIS LINE HERE (To Calculate Balance) 👇
     const balanceDue = Math.max(0, invoiceGrandTotal - advanceFromReservation);
+    // 👆 ------------------------------------------- 👆
 
     // Update Guest record with final money stats
     guest.totalRent = invoiceGrandTotal;
@@ -818,7 +821,7 @@ exports.getGuestActivityByDate = async (req, res) => {
 exports.extendStay = async (req, res) => {
   try {
     const { id } = req.params;
-    const { newCheckoutDate, additionalDiscount = 0, applyStandardDiscount = true } = req.body;
+    const { newCheckoutDate } = req.body;
 
     // Validate guest ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -911,46 +914,35 @@ exports.extendStay = async (req, res) => {
     let discountInfo = { stdDiscountPct: 0, stdDiscountAmt: 0, addlDiscountAmt: 0, netAdditionalRent: additionalRentBeforeDiscount };
 
     if (invoice) {
-      // Calculate the standard discount percentage
-      // For extended stay, we need to apply the same percentage that was used at check-in
-      // The discount should only apply to room rent, not extras
+      // Calculate the standard discount percentage from original invoice
+      // stdDiscountPct = discountAmount / (subtotal + discountAmount) * 100
+      const originalSubtotal = invoice.subtotal || 0;
+      const originalStdDiscount = invoice.discountAmount || 0;
+      const originalGrossSubtotal = originalSubtotal + originalStdDiscount + (invoice.additionaldiscount || 0);
+
+      // Calculate standard discount percentage
       let stdDiscountPct = 0;
-
-      // Check if guest originally had discount applied
-      if (guest.applyDiscount) {
-        // Try to get the original discount percentage from invoice
-        // We need to calculate it from room-only portion
-        const roomRentItem = invoice.items.find(item =>
-          item.description && item.description.includes('Room Rent')
-        );
-
-        if (roomRentItem && roomRentItem.total > 0) {
-          const originalRoomTotal = roomRentItem.total;
-          const originalStdDiscount = invoice.discountAmount || 0;
-
-          // If there was a discount, calculate the percentage from room total
-          if (originalStdDiscount > 0) {
-            // Discount was applied to roomTotal, so: stdDiscountAmt = roomTotal * (pct/100)
-            // Therefore: pct = (stdDiscountAmt / roomTotal) * 100
-            stdDiscountPct = (originalStdDiscount / originalRoomTotal) * 100;
-          }
-        }
+      if (originalGrossSubtotal > 0 && originalStdDiscount > 0) {
+        stdDiscountPct = (originalStdDiscount / originalGrossSubtotal) * 100;
       }
 
-      // Apply standard discount only if flag is true
-      const extendedStdDiscount = applyStandardDiscount
-        ? Math.round(additionalRentBeforeDiscount * (stdDiscountPct / 100))
-        : 0;
+      // Apply same standard discount percentage to extended nights
+      const extendedStdDiscount = Math.round(additionalRentBeforeDiscount * (stdDiscountPct / 100));
 
-      // Use user-provided additional discount (sanitize it)
-      const extendedAddlDiscount = Math.max(0, Math.round(Number(additionalDiscount) || 0));
+      // Prorate additional discount per night (if any)
+      const originalAddlDiscount = invoice.additionaldiscount || 0;
+      let extendedAddlDiscount = 0;
+      if (originalAddlDiscount > 0 && originalNights > 0) {
+        const addlDiscountPerNight = originalAddlDiscount / originalNights;
+        extendedAddlDiscount = Math.round(addlDiscountPerNight * additionalNights);
+      }
 
       // Net additional rent after discounts
       const netAdditionalRent = Math.max(0, additionalRentBeforeDiscount - extendedStdDiscount - extendedAddlDiscount);
 
       // Store discount info for response
       discountInfo = {
-        stdDiscountPct: applyStandardDiscount ? Math.round(stdDiscountPct * 100) / 100 : 0,
+        stdDiscountPct: Math.round(stdDiscountPct * 100) / 100,
         stdDiscountAmt: extendedStdDiscount,
         addlDiscountAmt: extendedAddlDiscount,
         netAdditionalRent: netAdditionalRent

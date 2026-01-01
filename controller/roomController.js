@@ -194,8 +194,8 @@ exports.getAvailableRooms = async (req, res) => {
     const startDate = new Date(`${checkin}T00:00:00.000Z`);
     const endDate = new Date(`${checkout}T00:00:00.000Z`);
 
-    console.log("=== getAvailableRooms Debug ===");
-    console.log("Requested dates:", { checkin, checkout, startDate, endDate });
+    // console.log("=== getAvailableRooms Debug ===");
+    // console.log("Requested dates:", { checkin, checkout, startDate, endDate });
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return res.status(400).json({ success: false, message: "Invalid date format. Please use YYYY-MM-DD." });
