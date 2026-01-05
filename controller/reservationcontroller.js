@@ -2,6 +2,7 @@ const Reservation = require("../model/reservationmodel");
 const Room = require("../model/room");
 const Guest = require("../model/guest");
 const Transaction = require("../model/transactions");
+const { checkRoomAvailability } = require("../utils/roomUtils");
 
 exports.createReservation = async (req, res) => {
   try {
@@ -450,5 +451,128 @@ exports.getDailyActivityReport = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Server error", error: err.message });
+  }
+};
+
+exports.changeReservationRoom = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newRoomId } = req.body;
+
+    // Validate inputs
+    if (!newRoomId) {
+      return res.status(400).json({
+        success: false,
+        message: "New room ID is required"
+      });
+    }
+
+    // Find the reservation
+    const reservation = await Reservation.findById(id).populate('room');
+    if (!reservation) {
+      return res.status(404).json({
+        success: false,
+        message: "Reservation not found"
+      });
+    }
+
+    // Check if reservation can be changed (only pending reservations)
+    if (reservation.status === 'checked-in') {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot change room for checked-in reservation"
+      });
+    }
+
+    if (reservation.status === 'cancelled' || reservation.status === 'checked-out') {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot change room for cancelled or checked-out reservation"
+      });
+    }
+
+    // Check if new room is the same as current
+    if (reservation.room._id.toString() === newRoomId) {
+      return res.status(400).json({
+        success: false,
+        message: "New room is the same as current room"
+      });
+    }
+
+    // Find the new room
+    const newRoom = await Room.findById(newRoomId);
+    if (!newRoom) {
+      return res.status(404).json({
+        success: false,
+        message: "New room not found"
+      });
+    }
+
+    // Check if room is under maintenance
+    if (newRoom.status === 'maintenance') {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot assign room under maintenance"
+      });
+    }
+
+    // Check availability for the new room
+    const availability = await checkRoomAvailability(
+      newRoomId,
+      reservation.startAt,
+      reservation.endAt,
+      { excludeReservationId: id }
+    );
+
+    if (!availability.available) {
+      return res.status(409).json({
+        success: false,
+        message: "New room is not available for the reservation dates",
+        conflicts: availability.conflicts
+      });
+    }
+
+    // Store old room info for response
+    const oldRoom = reservation.room;
+
+    // Update reservation with new room
+    reservation.room = newRoomId;
+    await reservation.save();
+
+    // Populate the new room for response
+    await reservation.populate('room');
+
+    res.status(200).json({
+      success: true,
+      message: `Reservation moved from Room ${oldRoom.roomNumber} to Room ${newRoom.roomNumber}`,
+      data: {
+        reservation: {
+          _id: reservation._id,
+          fullName: reservation.fullName,
+          startAt: reservation.startAt,
+          endAt: reservation.endAt,
+          status: reservation.status
+        },
+        oldRoom: {
+          _id: oldRoom._id,
+          roomNumber: oldRoom.roomNumber,
+          category: oldRoom.category,
+          rate: oldRoom.rate
+        },
+        newRoom: {
+          _id: newRoom._id,
+          roomNumber: newRoom.roomNumber,
+          category: newRoom.category,
+          rate: newRoom.rate
+        }
+      }
+    });
+  } catch (err) {
+    console.error("changeReservationRoom Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error while changing room",
+      error: err.message
+    });
   }
 };

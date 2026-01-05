@@ -7,6 +7,7 @@ const {
   cancelReservation,
   deleteReservation,
   getDailyActivityReport,
+  changeReservationRoom,
 } = require("../controller/reservationcontroller");
 
 // ======================== MIDDLEWARES =============================
@@ -20,6 +21,7 @@ router.post("/create-reservation", createReservation);
 router.get("/get-reservations", getReservations);
 router.get("/reports/daily-activity", getDailyActivityReport);
 router.get("/get-reservation/:id", getReservationById);
+router.put("/:id/change-room", changeReservationRoom);
 router.delete("/cancel-reservation/:id/cancel", cancelReservation);
 
 // ======================== ADMIN ONLY ROUTES =============================

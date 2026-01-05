@@ -12,6 +12,7 @@ const InventoryItem = require("../model/inventoryItem");
 const InventoryTransaction = require("../model/inventoryTransaction");
 const Transaction = require("../model/transactions");
 const { checkRoomAvailability, calculateNights } = require("../utils/roomUtils");
+const { updateMattressCharges } = require("../utils/invoiceUtils");
 
 
 exports.createGuest = async (req, res) => {
@@ -37,16 +38,16 @@ exports.createGuest = async (req, res) => {
     } = req.body;
 
     // Helper: Calculate free mattresses based on room category and bed type
+    // SOP: Presidential/Duluxe-Plus/Deluxe/Executive: One Bed=1, Two Bed=2
+    //      Standard (Studio): 0 free
     const getFreeMattresses = (category, bedType) => {
       const isTwoBed = bedType === "Two Bed";
       switch (category) {
         case "Presidential":
-          return isTwoBed ? 2 : 1;
         case "Duluxe-Plus":
-          return isTwoBed ? 2 : 1;
         case "Deluxe":
         case "Executive":
-          return 1;
+          return isTwoBed ? 2 : 1;
         case "Standard":
         default:
           return 0;
@@ -479,81 +480,6 @@ exports.getGuestById = async (req, res) => {
   }
 };
 
-// exports.checkoutGuest = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     if (!mongoose.Types.ObjectId.isValid(id)) {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Invalid guest ID" });
-//     }
-//     const guest = await Guest.findById(id);
-//     if (!guest) {
-//       return res
-//         .status(404)
-//         .json({ success: false, message: "Guest not found" });
-//     }
-//     if (guest.status === "checked-out") {
-//       return res
-//         .status(400)
-//         .json({ success: false, message: "Guest already checked out" });
-//     }
-
-//     // mark checkout timestamp
-//     const now = new Date();
-//     guest.checkOutAt = now;
-//     guest.checkOutTime = now.toTimeString().slice(0, 5);
-//     guest.status = "checked-out";
-
-//     // recalc stay duration
-//     const inMs = guest.checkInAt.getTime();
-//     const outMs = now.getTime();
-//     guest.stayDuration = Math.ceil((outMs - inMs) / (1000 * 60 * 60 * 24));
-//     await guest.save();
-
-//     // free up the room
-//     const room = await Room.findById(guest.room);
-//     if (room) {
-//       room.status = "available";
-//       await room.save();
-//     }
-//     // Change the status in reservation model
-//     const reservation = await Reservation.findOneAndUpdate(
-//       { guest: id },
-//       { $set: { status: "checked-out" } },
-//       { new: true }
-//     );
-//     // Notify Inventory module of check-out
-//     try {
-//       await axios.post(
-//         `${process.env.API_BASE_URL}/api/inventory/checkout`,
-//         { roomId: guest.room, guestId: guest._id },
-//         {
-//           headers: {
-//             Cookie: req.headers.cookie,
-//           },
-//         }
-//       );
-//       console.log(
-//         "Calling Inventory at:",
-//         `${process.env.API_BASE_URL}/api/inventory/checkout`
-//       );
-//     } catch (invErr) {
-//       console.error("Inventory check-out failed:", invErr.message);
-//       // Continue without blocking check-out
-//     }
-
-//     return res
-//       .status(200)
-//       .json({ success: true, message: "Guest checked out", data: guest });
-//   } catch (err) {
-//     console.error("checkoutGuest Error:", err);
-//     return res
-//       .status(500)
-//       .json({ success: false, message: "Server error", error: err.message });
-//   }
-// };
-
 exports.checkoutGuest = async (req, res) => {
   try {
     const { id } = req.params;
@@ -729,6 +655,19 @@ exports.UpdateGuestById = async (req, res) => {
       extraMattresses,
     } = req.body;
 
+    // First, get the original guest to compare mattress count
+    const originalGuest = await Guest.findById(id).populate('room');
+    if (!originalGuest) {
+      return res.status(404).json({ message: "Guest not found" });
+    }
+
+    const oldMattresses = originalGuest.extraMattresses || 0;
+    const newMattresses = extraMattresses !== undefined
+      ? Math.min(Math.max(0, Number(extraMattresses) || 0), 4)
+      : oldMattresses;
+    const mattressesChanged = newMattresses !== oldMattresses;
+
+    // Update guest record
     const updatedGuest = await Guest.findByIdAndUpdate(
       id,
       {
@@ -740,18 +679,34 @@ exports.UpdateGuestById = async (req, res) => {
         address: address,
         ...(adults !== undefined && { adults }),
         ...(infants !== undefined && { infants }),
-        ...(extraMattresses !== undefined && { extraMattresses: Math.min(Math.max(0, Number(extraMattresses) || 0), 4) }),
+        ...(extraMattresses !== undefined && { extraMattresses: newMattresses }),
       },
       { new: true, runValidators: true }
-    );
+    ).populate('room');
 
     if (!updatedGuest) {
       return res.status(404).json({ message: "Guest not found" });
     }
 
+    // If mattresses changed, recalculate invoice
+    let invoiceUpdateResult = null;
+    if (mattressesChanged && updatedGuest.room) {
+      invoiceUpdateResult = await updateMattressCharges(
+        id,
+        newMattresses,
+        updatedGuest.room
+      );
+
+      if (!invoiceUpdateResult.success) {
+        console.warn("Invoice update warning:", invoiceUpdateResult.message);
+      }
+    }
+
     return res.status(200).json({
       message: "Guest updated successfully",
       data: updatedGuest,
+      invoiceUpdated: mattressesChanged && invoiceUpdateResult?.success,
+      invoiceMessage: invoiceUpdateResult?.message
     });
   } catch (error) {
     console.error("UpdateGuestById Error:", error);
@@ -956,22 +911,28 @@ exports.extendStay = async (req, res) => {
         netAdditionalRent: netAdditionalRent
       };
 
-      // Add line item for extended nights (showing discounted price)
+      // Add line item for extended nights (showing GROSS price, discounts applied separately)
       invoice.items.push({
         description: `Extended Stay (${additionalNights} night${additionalNights > 1 ? 's' : ''})`,
         quantity: additionalNights,
         unitPrice: nightlyRate,
-        total: netAdditionalRent, // Already discounted
+        total: additionalRentBeforeDiscount, // GROSS amount before discounts
       });
 
       // Update discount amounts
       invoice.discountAmount = (invoice.discountAmount || 0) + extendedStdDiscount;
       invoice.additionaldiscount = (invoice.additionaldiscount || 0) + extendedAddlDiscount;
 
-      // Recalculate totals - subtotal increases by NET amount (after discounts)
-      invoice.subtotal = (invoice.subtotal || 0) + netAdditionalRent;
-      invoice.taxAmount = Math.round(invoice.subtotal * (invoice.taxRate / 100));
-      invoice.grandTotal = invoice.subtotal + invoice.taxAmount;
+      // Recalculate totals - subtotal is GROSS (before discounts)
+      invoice.subtotal = (invoice.subtotal || 0) + additionalRentBeforeDiscount;
+
+      // Calculate total discounts
+      const totalDiscounts = (invoice.discountAmount || 0) + (invoice.additionaldiscount || 0);
+
+      // Grand total = subtotal - all discounts + tax
+      const subtotalAfterDiscounts = Math.max(0, invoice.subtotal - totalDiscounts);
+      invoice.taxAmount = Math.round(subtotalAfterDiscounts * (invoice.taxRate / 100));
+      invoice.grandTotal = subtotalAfterDiscounts + invoice.taxAmount;
 
       // Recalculate balance due
       const paidAmount = invoice.advanceAdjusted || guest.advancePayment || 0;
