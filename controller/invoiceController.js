@@ -153,6 +153,24 @@ exports.sendInvoiceByEmail = async (req, res) => {
       });
     }
 
+    // Calculate total refunds issued for this guest
+    let totalRefunded = 0;
+    if (invoice.guest?._id) {
+      const refundTxs = await Transaction.find({
+        guest: invoice.guest._id,
+        type: "refund",
+      }).lean();
+
+      totalRefunded = refundTxs.reduce(
+        (sum, tx) => sum + (tx.amount || 0),
+        0
+      );
+    }
+
+    // Convert to plain object for template
+    const invoiceObj = invoice.toObject();
+    invoiceObj.totalRefunded = totalRefunded;
+
     // 1. Render EJS -> HTML
     const templatePath = path.resolve(
       __dirname,
@@ -161,7 +179,7 @@ exports.sendInvoiceByEmail = async (req, res) => {
       "invoice-template.ejs"
     );
     const htmlContent = await ejs.renderFile(templatePath, {
-      invoice,
+      invoice: invoiceObj,
       guest: invoice.guest,
     });
 

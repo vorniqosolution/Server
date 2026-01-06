@@ -465,11 +465,13 @@ exports.getGuestById = async (req, res) => {
     }
 
     const invoice = await Invoice.findOne({ guest: guest._id });
+    const reservation = await Reservation.findOne({ guest: guest._id });
 
     res.status(200).json({
       data: {
         guest,
         invoice: invoice || null,
+        reservation: reservation || null,
       },
     });
   } catch (err) {
