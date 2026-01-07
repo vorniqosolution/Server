@@ -64,6 +64,10 @@ const guestSchema = new mongoose.Schema(
     totalRent: { type: Number },
     gst: { type: Number },
     additionaldiscount: { type: Number },
+    // --- PROMO CODE ---
+    promoCode: { type: String, default: null },
+    promoDiscount: { type: Number, default: 0 },
+    // ------------------
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

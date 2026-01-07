@@ -11,6 +11,7 @@ const DecorPackage = require("../model/decorPackage");
 const InventoryItem = require("../model/inventoryItem");
 const InventoryTransaction = require("../model/inventoryTransaction");
 const Transaction = require("../model/transactions");
+const PromoCode = require("../model/promoCode");
 // Utils
 const { checkRoomAvailability, calculateNights } = require("../utils/roomUtils");
 const { updateMattressCharges } = require("../utils/invoiceUtils");
@@ -33,6 +34,7 @@ exports.createGuestService = async (data, user, headers) => {
         additionaldiscount = 0,
         reservationId,
         decorPackageid,
+        promoCode,
     } = data;
 
     // Helper to throw with status code
@@ -132,6 +134,15 @@ exports.createGuestService = async (data, user, headers) => {
     ) {
         throwError("Room is reserved for another guest.", 400);
     }
+
+    // --- AUTO-APPLY PROMO FROM RESERVATION ---
+    if (reservationId && !promoCode) {
+        const linkedRes = await Reservation.findById(reservationId);
+        if (linkedRes && linkedRes.promoCode) {
+            promoCode = linkedRes.promoCode;
+        }
+    }
+    // -----------------------------------------
 
     let advanceFromReservation = 0;
 
@@ -315,6 +326,29 @@ exports.createGuestService = async (data, user, headers) => {
     // --- 5. FINAL CALCULATIONS (Using new totals) ---
     const finalSubtotal = roomTotal + decorTotal + mattressCharges;
 
+    // --- PROMO CODE LOGIC ---
+    let promoDiscountAmt = 0;
+    if (promoCode) {
+        const promo = await PromoCode.findOne({
+            code: promoCode.toUpperCase(),
+            status: "active",
+            startDate: { $lte: today },
+            endDate: { $gte: today },
+        });
+
+        if (!promo) {
+            throwError("Invalid or expired promo code", 400);
+        }
+
+        // Apply Promo % to Room Rent (parallel to standard discount)
+        const promoPct = promo.percentage || 0;
+        promoDiscountAmt = Math.round(roomTotal * (promoPct / 100));
+
+        // Increment Usage
+        await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usageCount: 1 } });
+    }
+    // ------------------------
+
     // Discounts - Additional discount can apply to full subtotal
     const discountAmtNum = Math.min(
         Math.max(0, Number(additionaldiscount) || 0),
@@ -337,10 +371,13 @@ exports.createGuestService = async (data, user, headers) => {
     // Apply standard discount ONLY to room total (not mattresses, decor)
     const stdDiscountAmt = Math.round(roomTotal * (stdPct / 100));
 
-    const invoiceSubtotalBeforeTax = Math.max(
-        0,
-        finalSubtotal - stdDiscountAmt - discountAmtNum
-    );
+    // Calculate Taxable Amount (Subtotal - ALL Discounts)
+    // Safeguard: Total discount cannot exceed subtotal
+    const totalDiscountRaw = stdDiscountAmt + discountAmtNum + promoDiscountAmt;
+    const finalTotalDiscount = Math.min(totalDiscountRaw, finalSubtotal);
+
+    const invoiceSubtotalBeforeTax = Math.max(0, finalSubtotal - finalTotalDiscount);
+
     const invoiceGstAmount = Math.round(
         (invoiceSubtotalBeforeTax * taxRate) / 100
     );
@@ -353,6 +390,8 @@ exports.createGuestService = async (data, user, headers) => {
     guest.gst = invoiceGstAmount;
     guest.additionaldiscount = discountAmtNum;
     guest.discountTitle = discountTitle;
+    guest.promoCode = promoCode ? promoCode.toUpperCase() : null;
+    guest.promoDiscount = promoDiscountAmt;
     await guest.save();
 
     // --- 6. CREATE INVOICE ---
@@ -364,6 +403,7 @@ exports.createGuestService = async (data, user, headers) => {
         subtotal: finalSubtotal,
         discountAmount: stdDiscountAmt,
         additionaldiscount: discountAmtNum,
+        promoDiscount: promoDiscountAmt,
         taxRate,
         taxAmount: invoiceGstAmount,
         grandTotal: invoiceGrandTotal,
@@ -477,16 +517,18 @@ exports.checkoutGuestService = async (guestId, user) => {
 
             const originalSubtotal = getNum(invoice.subtotal);
             const originalStdDiscount = getNum(invoice.discountAmount);
+            const originalPromoDiscount = getNum(invoice.promoDiscount); // NEW: Scale promo too
             const extraDiscount = getNum(invoice.additionaldiscount); // Flat amount, doesn't scale
             const taxRate = getNum(invoice.taxRate);
 
             // A. Scale the Room Price & % Discount
             const newSubtotal = Math.round(originalSubtotal * ratio);
             const newStdDiscount = Math.round(originalStdDiscount * ratio);
+            const newPromoDiscount = Math.round(originalPromoDiscount * ratio); // NEW
 
             // B. Calculate New Tax & Total
-            // Formula: (Room - StdDisc - FlatDisc) * Tax
-            const taxableAmount = Math.max(0, newSubtotal - newStdDiscount - extraDiscount);
+            // Formula: (Room - StdDisc - FlatDisc - PromoDisc) * Tax
+            const taxableAmount = Math.max(0, newSubtotal - newStdDiscount - extraDiscount - newPromoDiscount);
             const newTaxAmount = Math.round((taxableAmount * taxRate) / 100);
             const newGrandTotal = taxableAmount + newTaxAmount;
 
@@ -496,6 +538,7 @@ exports.checkoutGuestService = async (guestId, user) => {
 
             invoice.subtotal = newSubtotal;
             invoice.discountAmount = newStdDiscount;
+            invoice.promoDiscount = newPromoDiscount; // NEW
             // invoice.additionaldiscount remains unchanged (it's flat)
             invoice.taxAmount = newTaxAmount;
             invoice.grandTotal = newGrandTotal;
@@ -632,16 +675,28 @@ exports.extendStayService = async (guestId, data) => {
             ? Math.round(additionalRentBeforeDiscount * (stdDiscountPct / 100))
             : 0;
 
+        // Apply Promo Discount if guest used one
+        let extendedPromoDiscount = 0;
+        let promoPct = 0;
+        if (guest.promoCode) {
+            const promo = await PromoCode.findOne({ code: guest.promoCode });
+            if (promo) {
+                promoPct = promo.percentage;
+                extendedPromoDiscount = Math.round(additionalRentBeforeDiscount * (promoPct / 100));
+            }
+        }
+
         // Use user-provided additional discount (sanitize it)
         const extendedAddlDiscount = Math.max(0, Math.round(Number(additionalDiscount) || 0));
 
         // Net additional rent after discounts
-        const netAdditionalRent = Math.max(0, additionalRentBeforeDiscount - extendedStdDiscount - extendedAddlDiscount);
+        const netAdditionalRent = Math.max(0, additionalRentBeforeDiscount - extendedStdDiscount - extendedAddlDiscount - extendedPromoDiscount);
 
         // Store discount info for response
         discountInfo = {
             stdDiscountPct: applyStandardDiscount ? Math.round(stdDiscountPct * 100) / 100 : 0,
             stdDiscountAmt: extendedStdDiscount,
+            promoDiscountAmt: extendedPromoDiscount,
             addlDiscountAmt: extendedAddlDiscount,
             netAdditionalRent: netAdditionalRent
         };
@@ -657,12 +712,13 @@ exports.extendStayService = async (guestId, data) => {
         // Update discount amounts
         invoice.discountAmount = (invoice.discountAmount || 0) + extendedStdDiscount;
         invoice.additionaldiscount = (invoice.additionaldiscount || 0) + extendedAddlDiscount;
+        invoice.promoDiscount = (invoice.promoDiscount || 0) + extendedPromoDiscount;
 
         // Recalculate totals - subtotal is GROSS (before discounts)
         invoice.subtotal = (invoice.subtotal || 0) + additionalRentBeforeDiscount;
 
         // Calculate total discounts
-        const totalDiscounts = (invoice.discountAmount || 0) + (invoice.additionaldiscount || 0);
+        const totalDiscounts = (invoice.discountAmount || 0) + (invoice.additionaldiscount || 0) + (invoice.promoDiscount || 0);
 
         // Grand total = subtotal - all discounts + tax
         const subtotalAfterDiscounts = Math.max(0, invoice.subtotal - totalDiscounts);

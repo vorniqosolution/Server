@@ -16,6 +16,7 @@ const reservationRoutes = require("./routes/reservationRoutes");
 const publicApiRoutes = require("./routes/publicApiRoutes");
 const decorRoutes = require("./routes/decorRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
+const promoCodeRoutes = require("./routes/promoCodeRoutes");
 // const transactionRoutes = require("./routes/transactionRoutes");
 
 dotenv.config();
@@ -62,6 +63,7 @@ app.use("/api/reservation", reservationRoutes);
 app.use("/api/tax", SettingRoutes);
 app.use("/api/decor", decorRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/promocodes", promoCodeRoutes);
 app.use("/api/dashboard", require("./routes/dashboardRoutes"));
 
 // testing purpose
