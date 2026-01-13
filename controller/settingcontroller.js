@@ -23,8 +23,8 @@ exports.getSettings = async (req, res) => {
 
 exports.updateSettings = async (req, res) => {
   try {
-    const { taxRate, currencySymbol, hotelName, systemAlert, mattressRate } = req.body;
-    console.log("Updating settings with:", { taxRate, currencySymbol, hotelName, systemAlert, mattressRate });
+    const { taxRate, currencySymbol, hotelName, systemAlert, mattressRate, seasonConfig } = req.body;
+    console.log("Updating settings with:", { taxRate, currencySymbol, hotelName, systemAlert, mattressRate, seasonConfig });
 
     // Ensure user object exists and role is accessible
     if (!req.user || req.user.role !== 'admin') {
@@ -40,7 +40,7 @@ exports.updateSettings = async (req, res) => {
 
     const updatedSettings = await Settings.findByIdAndUpdate(
       SETTINGS_ID,
-      { taxRate, currencySymbol, hotelName, systemAlert, mattressRate },
+      { taxRate, currencySymbol, hotelName, systemAlert, mattressRate, seasonConfig },
       { new: true, upsert: true, runValidators: true }
     );
 

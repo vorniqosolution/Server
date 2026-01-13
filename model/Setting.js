@@ -43,6 +43,16 @@ const settingsSchema = new mongoose.Schema(
       default: 1500,
       min: 0,
     },
+    seasonConfig: {
+      summer: {
+        startMonth: { type: Number, default: 5 }, // June
+        endMonth: { type: Number, default: 7 },   // August
+      },
+      winter: {
+        startMonth: { type: Number, default: 11 }, // December
+        endMonth: { type: Number, default: 1 },    // February
+      }
+    },
     // You can add more settings here in the future
     // hotelAddress: { type: String, default: "123 Hotel St, City" },
   },
