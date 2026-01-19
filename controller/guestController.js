@@ -274,3 +274,47 @@ exports.extendStay = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 };
+
+exports.getCheckedOutGuestsByDateRange = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Start date and End date are required. Format: YYYY-MM-DD",
+      });
+    }
+
+    // Construct dates using UTC+5 offset explicitly
+    const start = new Date(`${startDate}T00:00:00.000+05:00`);
+    const end = new Date(`${endDate}T23:59:59.999+05:00`);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date format. Use YYYY-MM-DD",
+      });
+    }
+
+    const guests = await Guest.find({
+      status: "checked-out",
+      checkOutAt: { $gte: start, $lte: end },
+    })
+      .select("fullName checkInAt checkOutAt room status")
+      .populate("room", "roomNumber category")
+      .sort({ checkOutAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: guests.length,
+      data: guests,
+    });
+  } catch (err) {
+    console.error("getCheckedOutGuestsByDateRange Error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error", error: err.message });
+  }
+};

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { getStartOfDay, getEndOfDay } = require("../utils/dateUtils");
 
 const guestSchema = new mongoose.Schema(
   {
@@ -93,23 +94,36 @@ guestSchema.statics.fetchRevenueByPeriod = async function ({
   switch (period) {
     case "yearly":
       matchStage.checkInAt = {
-        $gte: new Date(year, 0, 1),
-        $lt: new Date(year + 1, 0, 1),
+        $gte: getStartOfDay(`${year}-01-01`),
+        $lt: getStartOfDay(`${year + 1}-01-01`),
       };
       break;
     case "monthly":
       if (!month) throw new Error("Month is required for monthly period.");
+      const startM = month < 10 ? `0${month}` : month;
+      let nextM = month + 1;
+      let nextY = year;
+      if (nextM > 12) {
+        nextM = 1;
+        nextY = year + 1;
+      }
+      const endM = nextM < 10 ? `0${nextM}` : nextM;
+
       matchStage.checkInAt = {
-        $gte: new Date(year, month - 1, 1),
-        $lt: new Date(year, month, 1),
+        $gte: getStartOfDay(`${year}-${startM}-01`),
+        $lt: getStartOfDay(`${nextY}-${endM}-01`),
       };
       break;
     case "daily":
       if (!month || !day)
         throw new Error("Month and day are required for daily period.");
+      const dM = month < 10 ? `0${month}` : month;
+      const dD = day < 10 ? `0${day}` : day;
+      const dateStr = `${year}-${dM}-${dD}`;
+
       matchStage.checkInAt = {
-        $gte: new Date(year, month - 1, day),
-        $lt: new Date(year, month - 1, day + 1),
+        $gte: getStartOfDay(dateStr),
+        $lte: getEndOfDay(dateStr),
       };
       break;
     case "weekly":
@@ -151,8 +165,18 @@ guestSchema.statics.fetchRevenueByPeriod = async function ({
 };
 
 guestSchema.statics.fetchRevenueByCategory = async function (year, month) {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 1);
+  const startM = month < 10 ? `0${month}` : month;
+  let nextM = month + 1;
+  let nextY = year;
+  if (nextM > 12) {
+    nextM = 1;
+    nextY = year + 1;
+  }
+  const endM = nextM < 10 ? `0${nextM}` : nextM;
+
+  const startDate = getStartOfDay(`${year}-${startM}-01`);
+  const endDate = getStartOfDay(`${nextY}-${endM}-01`);
+
   const pipeline = [
     { $match: { checkInAt: { $gte: startDate, $lt: endDate } } },
     {
@@ -185,8 +209,18 @@ guestSchema.statics.fetchRevenueByCategory = async function (year, month) {
 };
 
 guestSchema.statics.fetchDiscountedGuests = async function (year, month) {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 1);
+  const startM = month < 10 ? `0${month}` : month;
+  let nextM = month + 1;
+  let nextY = year;
+  if (nextM > 12) {
+    nextM = 1;
+    nextY = year + 1;
+  }
+  const endM = nextM < 10 ? `0${nextM}` : nextM;
+
+  const startDate = getStartOfDay(`${year}-${startM}-01`);
+  const endDate = getStartOfDay(`${nextY}-${endM}-01`);
+
   const pipeline = [
     {
       $match: {

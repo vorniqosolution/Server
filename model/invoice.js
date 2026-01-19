@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { getStartOfDay, getEndOfDay } = require("../utils/dateUtils");
 
 const invoiceItemSchema = new mongoose.Schema({
   description: { type: String, required: true },
@@ -75,27 +76,49 @@ invoiceSchema.statics.fetchRevenueByPeriod = async function ({
   const matchStage = {};
   switch (period) {
     case "yearly":
+      // year argument is number e.g. 2024
+      // `${year}-01-01`
       matchStage.checkInAt = {
-        $gte: new Date(year, 0, 1),
-        $lt: new Date(year + 1, 0, 1),
+        $gte: getStartOfDay(`${year}-01-01`),
+        $lt: getStartOfDay(`${year + 1}-01-01`),
       };
       break;
     case "monthly":
       if (!month) throw new Error("Month is required for monthly period.");
+      // month is 1-indexed number
+      const startM = month < 10 ? `0${month}` : month;
+      let nextM = month + 1;
+      let nextY = year;
+      if (nextM > 12) {
+        nextM = 1;
+        nextY = year + 1;
+      }
+      const endM = nextM < 10 ? `0${nextM}` : nextM;
+
       matchStage.checkInAt = {
-        $gte: new Date(year, month - 1, 1),
-        $lt: new Date(year, month, 1),
+        $gte: getStartOfDay(`${year}-${startM}-01`),
+        $lt: getStartOfDay(`${nextY}-${endM}-01`),
       };
       break;
     case "daily":
       if (!month || !day)
         throw new Error("Month and day are required for daily period.");
+      const dM = month < 10 ? `0${month}` : month;
+      const dD = day < 10 ? `0${day}` : day;
+      const dateStr = `${year}-${dM}-${dD}`;
+
       matchStage.checkInAt = {
-        $gte: new Date(year, month - 1, day),
-        $lt: new Date(year, month - 1, day + 1),
+        $gte: getStartOfDay(dateStr),
+        $lte: getEndOfDay(dateStr),
       };
       break;
     case "weekly":
+      // Weekly logic relies on ISO week which is consistent, 
+      // but the input 'checkInAt' is stored as UTC. 
+      // If we want "Weekly Revenue (PKT)", we simply accept that the $isoWeek
+      // operator works on the stored date. 
+      // Shifting thousands of documents for aggregation is expensive.
+      // We will leave weekly as-is for now (Standard ISO Week).
       if (!week) throw new Error("Week is required for weekly period.");
       const weeklyResult = await this.aggregate([
         {
@@ -134,8 +157,18 @@ invoiceSchema.statics.fetchRevenueByPeriod = async function ({
 };
 // MOVED & UPDATED: This query is now simpler as it doesn't need to look up rooms.
 invoiceSchema.statics.fetchRevenueByCategory = async function (year, month) {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 1);
+  const startM = month < 10 ? `0${month}` : month;
+  let nextM = month + 1;
+  let nextY = year;
+  if (nextM > 12) {
+    nextM = 1;
+    nextY = year + 1;
+  }
+  const endM = nextM < 10 ? `0${nextM}` : nextM;
+
+  const startDate = getStartOfDay(`${year}-${startM}-01`);
+  const endDate = getStartOfDay(`${nextY}-${endM}-01`);
+
   const pipeline = [
     { $match: { checkInAt: { $gte: startDate, $lt: endDate } } },
     {
@@ -154,8 +187,18 @@ invoiceSchema.statics.fetchRevenueByCategory = async function (year, month) {
 };
 // MOVED & UPDATED: Simplified query using snapshot data.
 invoiceSchema.statics.fetchDiscountedGuests = async function (year, month) {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 1);
+  const startM = month < 10 ? `0${month}` : month;
+  let nextM = month + 1;
+  let nextY = year;
+  if (nextM > 12) {
+    nextM = 1;
+    nextY = year + 1;
+  }
+  const endM = nextM < 10 ? `0${nextM}` : nextM;
+
+  const startDate = getStartOfDay(`${year}-${startM}-01`);
+  const endDate = getStartOfDay(`${nextY}-${endM}-01`);
+
   const pipeline = [
     {
       $match: {

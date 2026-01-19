@@ -3,6 +3,7 @@ const Room = require("../model/room");
 const Guest = require("../model/guest");
 const Transaction = require("../model/transactions");
 const { checkRoomAvailability } = require("../utils/roomUtils");
+const { getStartOfDay, getEndOfDay } = require("../utils/dateUtils");
 
 exports.createReservation = async (req, res) => {
   try {
@@ -67,9 +68,11 @@ exports.createReservation = async (req, res) => {
     }
     // -------------------------------
 
-    // Use the reliable, native JavaScript UTC date parsing
-    const startAt = new Date(`${checkin}T00:00:00.000Z`);
-    const endAt = new Date(`${checkout}T00:00:00.000Z`);
+    // Use standardized UTC+5 date parsing
+    const startAt = getStartOfDay(checkin);
+    // For reservations, checkout date typically means "morning of checkout",
+    // but internally we store it as "midnight of that day" which works as an exclusive boundary.
+    const endAt = getStartOfDay(checkout);
 
     if (isNaN(startAt.getTime()) || isNaN(endAt.getTime())) {
       return res.status(400).json({
@@ -383,8 +386,8 @@ exports.getDailyActivityReport = async (req, res) => {
         .json({ success: false, message: "Date is required." });
     }
 
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+    const dayStart = getStartOfDay(date);
+    const dayEnd = getEndOfDay(date);
 
     const queries = {
       scheduledArrivals: Reservation.find({
