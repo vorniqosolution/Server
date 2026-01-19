@@ -12,6 +12,7 @@ router.get("/get-Guest-By-Id/:id", guestController.getGuestById);
 router.patch("/check-out-Guest/:id/checkout", guestController.checkoutGuest);
 router.patch("/update-guest/:id", guestController.UpdateGuestById);
 router.get("/activity-by-date", guestController.getGuestActivityByDate);
+router.get("/checked-out-by-range", guestController.getCheckedOutGuestsByDateRange);
 router.put("/:id/extend", guestController.extendStay);
 // admin routes
 router.use(authorize('admin'));

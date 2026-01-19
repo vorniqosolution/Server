@@ -1,14 +1,13 @@
 const Room = require("../model/room");
 const Guest = require("../model/guest");
 const Reservation = require("../model/reservationmodel");
+const { getStartOfDay, getEndOfDay } = require("../utils/dateUtils");
 
 exports.getRoomStats = async (req, res) => {
     try {
         const today = new Date();
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date();
-        endOfDay.setHours(23, 59, 59, 999);
+        const startOfDay = getStartOfDay(today);
+        const endOfDay = getEndOfDay(today);
 
         // 1. Get total rooms count
         const totalRooms = await Room.countDocuments();
@@ -61,10 +60,9 @@ exports.getRoomStats = async (req, res) => {
 
 exports.getTodayArrivals = async (req, res) => {
     try {
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date();
-        endOfDay.setHours(23, 59, 59, 999);
+        const today = new Date();
+        const startOfDay = getStartOfDay(today);
+        const endOfDay = getEndOfDay(today);
 
         const arrivals = await Reservation.find({
             status: { $in: ["reserved", "confirmed"] },
@@ -93,14 +91,14 @@ exports.getRoomStatuses = async (req, res) => {
 
         // Fetch active reservations (Arrivals or Future)
         const today = new Date();
-        today.setHours(0, 0, 0, 0); // Start of today
+        const startOfDay = getStartOfDay(today); // Start of today (UTC+5)
 
         // We want reservations that are either:
         // 1. Arriving Today (Arrival)
         // 2. Starting in the Future (Reserved)
         const reservations = await Reservation.find({
             status: { $in: ["reserved", "confirmed"] },
-            startAt: { $gte: today },
+            startAt: { $gte: startOfDay },
         });
 
         // 1. Map Guests by Room ID for O(1) access
