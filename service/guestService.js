@@ -622,15 +622,20 @@ exports.extendStayService = async (guestId, data) => {
     }
 
     // Check room availability for the extended period
-    const isAvailable = await checkRoomAvailability(
+    const availabilityResult = await checkRoomAvailability(
         guest.room._id,
         currentCheckout, // Start checking from old checkout
         newCheckout,     // Until new checkout
-        guestId          // Exclude this guest from collision check (though logic usually checks others)
+        { excludeGuestId: guestId } // Correctly pass options object
     );
 
-    if (!isAvailable) {
-        const error = new Error("Room is not available for the requested extension period");
+    if (!availabilityResult.available) {
+        // Create a detailed error message
+        const conflictReasons = availabilityResult.conflicts.map(c =>
+            `${c.type === 'reservation' ? 'Reservation' : 'Guest'} (${c.name}) from ${new Date(c.startDate).toLocaleDateString()} to ${new Date(c.endDate).toLocaleDateString()}`
+        ).join(', ');
+
+        const error = new Error(`Room is not available: ${conflictReasons}`);
         error.statusCode = 400;
         throw error;
     }
