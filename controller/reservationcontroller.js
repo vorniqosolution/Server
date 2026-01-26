@@ -295,9 +295,9 @@ exports.cancelReservation = async (req, res) => {
     if (r.status === "cancelled") {
       return res
         .status(400)
-        .json({ success: false, message: "Already room cancel" });
+        .json({ success: false, message: "Reservation is already cancelled" });
     }
-    if (r.status !== "reserved") {
+    if (!["reserved", "confirmed"].includes(r.status)) {
       return res
         .status(400)
         .json({ success: false, message: "Cannot cancel after check-in" });
@@ -333,19 +333,17 @@ exports.deleteReservation = async (req, res) => {
         .json({ success: false, message: "Reservation not found" });
     }
 
-    // 2. Prevent deletion of reservations that have been checked-in
-    if (
-      reservationToDelete.status === "checked-in" ||
-      reservationToDelete.status === "checked-out"
-    ) {
+    // 2. Prevent deletion of reservations that are currently checked-in (active)
+    if (reservationToDelete.status === "checked-in") {
       return res.status(400).json({
         success: false,
-        message: `Cannot delete a reservation that is currently '${reservationToDelete.status}'. Please cancel it first if it is 'reserved'.`,
+        message: "Cannot delete an active checked-in reservation. Check-out first.",
       });
     }
 
-    // 3. If the reservation was 'reserved' and is now being deleted,
-    if (reservationToDelete.status === "reserved") {
+    // 3. If the reservation was 'reserved' or 'confirmed' and is now being deleted,
+    // free up the room
+    if (["reserved", "confirmed"].includes(reservationToDelete.status)) {
       const room = await Room.findById(reservationToDelete.room);
       if (room && room.status !== "maintenance") {
         room.status = "available";
