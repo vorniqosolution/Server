@@ -219,3 +219,32 @@ exports.getDailyCashSummary = async (req, res) => {
     });
   }
 };
+
+exports.deleteTransaction = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const transaction = await Transaction.findById(id);
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: "Transaction not found",
+      });
+    }
+
+    await Transaction.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Transaction deleted successfully",
+      deletedId: id,
+    });
+  } catch (err) {
+    console.error("deleteTransaction Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: err.message,
+    });
+  }
+};
