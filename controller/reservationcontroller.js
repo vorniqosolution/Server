@@ -579,3 +579,38 @@ exports.changeReservationRoom = async (req, res) => {
     });
   }
 };
+
+/**
+ * Swap Reservation - Change room AND/OR dates atomically
+ * Preserves transaction history and recalculates financials
+ */
+exports.swapReservation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { swapReservationService } = require("../service/reservationService");
+
+    const result = await swapReservationService(id, req.body, req.user.userId);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result
+    });
+  } catch (err) {
+    console.error("swapReservation Error:", err);
+    const statusCode = err.statusCode || 500;
+    if (statusCode < 500) {
+      return res.status(statusCode).json({
+        success: false,
+        message: err.message,
+        conflicts: err.conflicts || undefined
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: "Server error while swapping reservation",
+      error: err.message
+    });
+  }
+};
+
